@@ -112,6 +112,7 @@ export default function QuoteBuilder() {
         customer_phone: customerPhone,
         customer_address: customerAddress,
         notes,
+        estimated_time: estimatedTime || '',
         valid_until: validUntil.toISOString().split('T')[0],
         status,
         items: quoteItems.map(qi => ({
