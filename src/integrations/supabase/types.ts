@@ -14,13 +14,280 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      companies: {
+        Row: {
+          address: string | null
+          bankgiro: string | null
+          created_at: string
+          default_validity_days: number
+          default_vat: number
+          email: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          org_number: string | null
+          phone: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          bankgiro?: string | null
+          created_at?: string
+          default_validity_days?: number
+          default_vat?: number
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          org_number?: string | null
+          phone?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          bankgiro?: string | null
+          created_at?: string
+          default_validity_days?: number
+          default_vat?: number
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          org_number?: string | null
+          phone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      materials: {
+        Row: {
+          category: string | null
+          company_id: string
+          created_at: string
+          id: string
+          name: string
+          unit: string | null
+          unit_price: number
+        }
+        Insert: {
+          category?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          name: string
+          unit?: string | null
+          unit_price?: number
+        }
+        Update: {
+          category?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          unit?: string | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      quote_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          quote_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          quote_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          quote_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_events_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_items: {
+        Row: {
+          description: string
+          id: string
+          quantity: number
+          quote_id: string
+          sort_order: number | null
+          unit_price: number
+          vat_rate: number
+        }
+        Insert: {
+          description?: string
+          id?: string
+          quantity?: number
+          quote_id: string
+          sort_order?: number | null
+          unit_price?: number
+          vat_rate?: number
+        }
+        Update: {
+          description?: string
+          id?: string
+          quantity?: number
+          quote_id?: string
+          sort_order?: number | null
+          unit_price?: number
+          vat_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_templates: {
+        Row: {
+          category: string | null
+          company_id: string
+          created_at: string
+          default_items: Json | null
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          category?: string | null
+          company_id: string
+          created_at?: string
+          default_items?: Json | null
+          description?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          category?: string | null
+          company_id?: string
+          created_at?: string
+          default_items?: Json | null
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_templates_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          accepted_at: string | null
+          company_id: string
+          created_at: string
+          customer_address: string | null
+          customer_email: string
+          customer_name: string
+          customer_phone: string | null
+          discount_amount: number | null
+          id: string
+          notes: string | null
+          opened_at: string | null
+          quote_number: string
+          sent_at: string | null
+          status: string
+          valid_until: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          company_id: string
+          created_at?: string
+          customer_address?: string | null
+          customer_email?: string
+          customer_name: string
+          customer_phone?: string | null
+          discount_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          quote_number: string
+          sent_at?: string | null
+          status?: string
+          valid_until?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          company_id?: string
+          created_at?: string
+          customer_address?: string | null
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string | null
+          discount_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          quote_number?: string
+          sent_at?: string | null
+          status?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_next_quote_number: { Args: { p_company_id: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
