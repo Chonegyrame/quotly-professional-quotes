@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,11 +9,14 @@ import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
 import { useMemo, useState } from 'react';
+import { useCompany } from '@/hooks/useCompany';
+import { generateQuotePdf } from '@/lib/generateQuotePdf';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { quotes: dbQuotes } = useQuotes();
+  const { company } = useCompany();
 
   // Map DB quote or fall back to mock
   const quote = useMemo(() => {
@@ -71,6 +74,47 @@ export default function QuoteDetail() {
     toast.success('Link copied!');
   };
 
+  const handleDownloadPdf = () => {
+    if (!company) {
+      toast.error('Company info not loaded');
+      return;
+    }
+    generateQuotePdf({
+      quoteNumber: quote.quoteNumber,
+      customerName: quote.customerName,
+      customerEmail: quote.customerEmail,
+      customerPhone: quote.customerPhone,
+      customerAddress: quote.customerAddress,
+      validUntil: quote.validUntil,
+      createdAt: quote.createdAt,
+      estimatedTime: (quote as any).estimatedTime,
+      notes: quote.notes,
+      items: quote.items.map((item: any) => ({
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        vatRate: item.vatRate,
+        materials: (item.materials || []).map((m: any) => ({
+          name: m.name,
+          quantity: m.quantity,
+          unitPrice: m.unitPrice,
+          unit: m.unit || 'st',
+        })),
+      })),
+      company: {
+        name: company.name,
+        orgNumber: company.org_number,
+        address: company.address,
+        phone: company.phone,
+        email: company.email,
+        bankgiro: company.bankgiro,
+        logoUrl: company.logo_url,
+      },
+      defaultVat: company.default_vat,
+    });
+    toast.success('PDF downloaded!');
+  };
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
       <div className="flex items-center gap-3 mb-4">
@@ -111,6 +155,9 @@ export default function QuoteDetail() {
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDownloadPdf}>
+          <Download className="h-3.5 w-3.5" /> PDF
+        </Button>
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (coming soon)')}>
           <CopyPlus className="h-3.5 w-3.5" /> Duplicate
         </Button>
