@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Package, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Package, Trash2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from '@/hooks/useCompany';
@@ -19,6 +20,13 @@ export default function Materials() {
   const [unitPrice, setUnitPrice] = useState('');
   const [unit, setUnit] = useState('st');
   const [category, setCategory] = useState('');
+
+  // Edit state
+  const [editItem, setEditItem] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editUnit, setEditUnit] = useState('');
+  const [editCategory, setEditCategory] = useState('');
 
   const { data: materials = [], isLoading } = useQuery({
     queryKey: ['materials', company?.id],
@@ -55,6 +63,23 @@ export default function Materials() {
     },
   });
 
+  const updateMaterial = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('materials').update({
+        name: editName,
+        unit_price: parseFloat(editPrice) || 0,
+        unit: editUnit,
+        category: editCategory || 'general',
+      }).eq('id', editItem.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
+      setEditItem(null);
+      toast.success('Material updated');
+    },
+  });
+
   const deleteMaterial = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('materials').delete().eq('id', id);
@@ -65,6 +90,14 @@ export default function Materials() {
       toast.success('Material removed');
     },
   });
+
+  const openEdit = (m: any) => {
+    setEditItem(m);
+    setEditName(m.name);
+    setEditPrice(String(m.unit_price));
+    setEditUnit(m.unit || 'st');
+    setEditCategory(m.category || '');
+  };
 
   const formatPrice = (n: number) =>
     new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: 0 }).format(n);
@@ -119,10 +152,13 @@ export default function Materials() {
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                   <Package className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(m)}>
                   <p className="font-semibold text-sm truncate">{m.name}</p>
                   <p className="text-xs text-muted-foreground">{formatPrice(m.unit_price)} / {m.unit}{m.category !== 'general' ? ` · ${m.category}` : ''}</p>
                 </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => openEdit(m)}>
+                  <Pencil className="h-4 w-4 text-muted-foreground" />
+                </Button>
                 <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => deleteMaterial.mutate(m.id)}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
@@ -131,6 +167,41 @@ export default function Materials() {
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editItem} onOpenChange={open => { if (!open) setEditItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Material</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Material Name *</Label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} className="mt-1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Price (SEK)</Label>
+                <Input type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Unit</Label>
+                <Input value={editUnit} onChange={e => setEditUnit(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label>Category</Label>
+              <Input value={editCategory} onChange={e => setEditCategory(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button disabled={!editName.trim() || updateMaterial.isPending} onClick={() => updateMaterial.mutate()}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
