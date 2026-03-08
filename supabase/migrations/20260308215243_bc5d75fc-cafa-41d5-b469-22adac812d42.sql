@@ -1,0 +1,1 @@
+ALTER TABLE public.quotes ADD COLUMN estimated_time text DEFAULT '' NULL;

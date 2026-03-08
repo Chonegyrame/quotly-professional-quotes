@@ -46,6 +46,7 @@ export default function QuoteBuilder() {
 
   const [items, setItems] = useState<LineItem[]>([emptyItem()]);
   const [notes, setNotes] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
 
   const addItem = () => setItems([...items, emptyItem()]);
@@ -111,6 +112,7 @@ export default function QuoteBuilder() {
         customer_phone: customerPhone,
         customer_address: customerAddress,
         notes,
+        estimated_time: estimatedTime || '',
         valid_until: validUntil.toISOString().split('T')[0],
         status,
         items: quoteItems.map(qi => ({
@@ -222,6 +224,10 @@ export default function QuoteBuilder() {
           <Card>
             <CardContent className="p-4 space-y-3">
               <div>
+                <Label>Beräknad arbetstid (optional)</Label>
+                <Input placeholder="e.g. 2 dagar, 3–4 timmar" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} className="mt-1" />
+              </div>
+              <div>
                 <Label>Notes (optional)</Label>
                 <Textarea placeholder="Any additional notes for the customer..." value={notes} onChange={e => setNotes(e.target.value)} className="mt-1" />
               </div>
@@ -298,6 +304,9 @@ export default function QuoteBuilder() {
                 <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
               </div>
 
+              {estimatedTime && (
+                <div className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {estimatedTime}</div>
+              )}
               {notes && <p className="mt-3 text-sm text-muted-foreground italic">{notes}</p>}
             </CardContent>
           </Card>
