@@ -155,6 +155,9 @@ export default function QuoteDetail() {
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDownloadPdf}>
+          <Download className="h-3.5 w-3.5" /> PDF
+        </Button>
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (coming soon)')}>
           <CopyPlus className="h-3.5 w-3.5" /> Duplicate
         </Button>
