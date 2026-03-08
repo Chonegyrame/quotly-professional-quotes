@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { LineItemEditor } from '@/components/quote-builder/LineItemEditor';
 import { TemplateSelector } from '@/components/quote-builder/TemplateSelector';
 import { LineItem } from '@/components/quote-builder/types';
 import { formatCurrency } from '@/data/mockData';
-import { useQuotes } from '@/hooks/useQuotes';
+import { useQuotes, useQuote } from '@/hooks/useQuotes';
 import { useCompany } from '@/hooks/useCompany';
 import { useMaterials } from '@/hooks/useMaterials';
 import { useTemplates } from '@/hooks/useTemplates';
