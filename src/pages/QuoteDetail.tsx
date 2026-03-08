@@ -61,7 +61,8 @@ export default function QuoteDetail() {
   const subtotal = getQuoteSubtotal(quote.items);
   const vat = getQuoteVat(quote.items);
   const total = getQuoteTotal(quote.items);
-  const canEdit = ['draft', 'sent'].includes(quote.status);
+  const canEdit = ['draft', 'sent', 'opened'].includes(quote.status);
+  const isLocked = ['accepted', 'declined', 'expired'].includes(quote.status);
   const reminderDue = isReminderDue(quote);
   const publicLink = `${window.location.origin}/q/${quote.id}`;
 
@@ -100,8 +101,13 @@ export default function QuoteDetail() {
             <ExternalLink className="h-3.5 w-3.5" /> View as Customer
           </Button>
         </Link>
-        {canEdit && (
+        {canEdit && !isLocked && (
           <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
+            <Edit className="h-3.5 w-3.5" /> Edit
+          </Button>
+        )}
+        {isLocked && (
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0 opacity-50 cursor-not-allowed" disabled title={`Cannot edit ${quote.status} quotes`}>
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}

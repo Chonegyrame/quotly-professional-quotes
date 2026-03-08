@@ -134,6 +134,9 @@ export default function QuoteBuilder() {
   const canProceedStep1 = items.some(i => i.description.trim() && (i.laborPrice > 0 || i.materials.some(m => m.unitPrice > 0)));
 
   const handleSave = async (status: 'draft' | 'sent') => {
+    // When editing a previously sent/opened quote, force status back to draft if saving as draft
+    const effectiveStatus = status;
+
     try {
       const quoteItems = items.filter(i => i.description.trim()).map(i => ({
         description: i.description,
@@ -152,7 +155,7 @@ export default function QuoteBuilder() {
         notes,
         estimated_time: estimatedTime || '',
         valid_until: validUntil.toISOString().split('T')[0],
-        status,
+        status: effectiveStatus,
         items: quoteItems.map(qi => ({
           description: qi.description,
           quantity: qi.quantity,
