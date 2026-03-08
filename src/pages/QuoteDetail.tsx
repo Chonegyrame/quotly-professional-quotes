@@ -118,23 +118,33 @@ export default function QuoteDetail() {
 
       <Card className="mb-4">
         <CardContent className="p-4">
-          <h3 className="font-semibold mb-3 text-sm">Line Items</h3>
-          <div className="space-y-2">
-            {quote.items.map(item => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <div>
-                  <p>{item.description}</p>
-                  <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
-                </div>
-                <span className="font-medium">{formatCurrency(item.quantity * item.unitPrice)}</span>
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger className="flex items-center justify-between w-full group">
+              <h3 className="font-semibold text-sm">Line Items ({quote.items.length})</h3>
+              <div className="flex items-center gap-2">
+                <span className="font-heading font-bold text-lg">{formatCurrency(total)}</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
               </div>
-            ))}
-          </div>
-          <div className="border-t mt-3 pt-3 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">VAT (25%)</span><span>{formatCurrency(vat)}</span></div>
-            <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
-          </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="space-y-3 mt-4 pt-3 border-t">
+                {quote.items.map(item => (
+                  <div key={item.id} className="flex justify-between text-sm py-2 border-b border-border/50 last:border-0">
+                    <div>
+                      <p className="font-medium">{item.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                    </div>
+                    <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t mt-3 pt-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">VAT (25%)</span><span>{formatCurrency(vat)}</span></div>
+                <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground">Valid until: {formatDate(quote.validUntil)}</p>}
         </CardContent>
