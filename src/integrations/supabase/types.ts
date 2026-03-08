@@ -144,6 +144,57 @@ export type Database = {
           },
         ]
       }
+      quote_item_materials: {
+        Row: {
+          created_at: string
+          id: string
+          material_id: string | null
+          name: string
+          quantity: number
+          quote_item_id: string
+          sort_order: number | null
+          unit: string | null
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          material_id?: string | null
+          name?: string
+          quantity?: number
+          quote_item_id: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          material_id?: string | null
+          name?: string
+          quantity?: number
+          quote_item_id?: string
+          sort_order?: number | null
+          unit?: string | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_item_materials_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_item_materials_quote_item_id_fkey"
+            columns: ["quote_item_id"]
+            isOneToOne: false
+            referencedRelation: "quote_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_items: {
         Row: {
           description: string
