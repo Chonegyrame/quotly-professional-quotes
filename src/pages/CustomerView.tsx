@@ -194,11 +194,26 @@ export default function CustomerView() {
           </CardContent>
         </Card>
 
+        {isRevised && (
+          <Card className="mb-4 border-warning/50 bg-warning/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <RefreshCw className="h-5 w-5 text-warning shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-warning">Offerten har reviderats</p>
+                <p className="text-xs text-muted-foreground">Företaget har gjort ändringar i offerten. Granska och godkänn eller neka de nya villkoren.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardContent className="p-4 space-y-3">
             <Textarea placeholder="Meddelande (valfritt)..." value={message} onChange={e => setMessage(e.target.value)} rows={2} />
             <Button className="w-full h-14 text-lg font-heading font-bold gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleAccept}>
-              <Check className="h-5 w-5" /> Acceptera offert
+              <Check className="h-5 w-5" /> {isRevised ? 'Godkänn ändringarna' : 'Acceptera offert'}
+            </Button>
+            <Button variant="outline" className="w-full gap-2 text-destructive hover:text-destructive" onClick={handleDecline}>
+              <X className="h-4 w-4" /> {isRevised ? 'Neka ändringarna' : 'Neka offert'}
             </Button>
             <p className="text-xs text-center text-muted-foreground">Genom att acceptera godkänner du villkoren i offerten</p>
           </CardContent>
