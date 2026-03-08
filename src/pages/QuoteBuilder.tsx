@@ -216,7 +216,7 @@ export default function QuoteBuilder() {
         <Button variant="ghost" size="icon" onClick={() => currentStep > 0 ? setCurrentStep(currentStep - 1) : navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-heading font-bold">New Quote</h1>
+        <h1 className="text-xl font-heading font-bold">{isEditMode ? 'Edit Quote' : 'New Quote'}</h1>
       </div>
 
       <StepIndicator steps={steps} currentStep={currentStep} />
