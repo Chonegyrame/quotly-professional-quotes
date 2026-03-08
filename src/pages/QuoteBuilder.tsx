@@ -46,6 +46,7 @@ export default function QuoteBuilder() {
 
   const [items, setItems] = useState<LineItem[]>([emptyItem()]);
   const [notes, setNotes] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
 
   const addItem = () => setItems([...items, emptyItem()]);
