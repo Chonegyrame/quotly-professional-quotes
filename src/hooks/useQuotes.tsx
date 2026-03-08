@@ -170,10 +170,11 @@ export function useQuotes() {
       const { error: itemsError } = await supabase.from('quote_items').insert(items);
       if (itemsError) throw itemsError;
 
-      // Create event
+      // Create event based on transition
+      const eventType = (prevStatus === 'accepted' || prevStatus === 'revised') ? 'revised' : 'edited';
       await supabase.from('quote_events').insert({
         quote_id: input.quoteId,
-        event_type: 'edited',
+        event_type: eventType,
       });
 
       return input.quoteId;

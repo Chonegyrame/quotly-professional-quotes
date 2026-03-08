@@ -11,13 +11,20 @@ import { formatCurrency, formatDate } from '@/data/mockData';
 export default function CustomerView() {
   const { id } = useParams();
   const { data: quote, isLoading } = usePublicQuote(id);
-  const [accepted, setAccepted] = useState(false);
+  const [responded, setResponded] = useState(false);
+  const [responseType, setResponseType] = useState<'accepted' | 'declined'>('accepted');
   const [message, setMessage] = useState('');
+
+  const isRevised = quote?.status === 'revised';
+  const isAlreadyAccepted = quote?.status === 'accepted';
+  const isDeclined = quote?.status === 'declined';
 
   // Track opened
   useState(() => {
     if (id) {
-      supabase.from('quotes').update({ opened_at: new Date().toISOString(), status: 'opened' }).eq('id', id).is('opened_at', null).then(() => {
+      // Only mark as opened if it's sent (not revised — we want to keep revised status)
+      const statusUpdate = quote?.status === 'sent' ? { opened_at: new Date().toISOString(), status: 'opened' } : { opened_at: new Date().toISOString() };
+      supabase.from('quotes').update(statusUpdate).eq('id', id).is('opened_at', null).then(() => {
         supabase.from('quote_events').insert({ quote_id: id, event_type: 'opened' });
       });
     }
