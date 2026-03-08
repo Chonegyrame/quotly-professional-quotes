@@ -360,11 +360,11 @@ export default function QuoteBuilder() {
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={createQuote.isPending}>
-              <Save className="h-4 w-4" /> Save Draft
+            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={isPending}>
+              <Save className="h-4 w-4" /> {isEditMode ? 'Save' : 'Save Draft'}
             </Button>
-            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={createQuote.isPending}>
-              <Send className="h-4 w-4" /> Send Quote
+            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={isPending}>
+              <Send className="h-4 w-4" /> {isEditMode ? 'Update & Send' : 'Send Quote'}
             </Button>
           </div>
         </div>
