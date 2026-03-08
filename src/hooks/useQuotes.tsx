@@ -48,6 +48,7 @@ export function useQuotes() {
           customer_phone: input.customer_phone || '',
           customer_address: input.customer_address || '',
           notes: input.notes || '',
+          estimated_time: input.estimated_time || '',
           valid_until: input.valid_until,
           status: input.status || 'draft',
           sent_at: input.status === 'sent' ? new Date().toISOString() : null,
