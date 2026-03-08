@@ -30,11 +30,15 @@ const emptyItem = (): LineItem => ({
 
 export default function QuoteBuilder() {
   const navigate = useNavigate();
-  const { createQuote } = useQuotes();
+  const { id: editId } = useParams();
+  const isEditMode = !!editId;
+  const existingQuote = useQuote(editId);
+  const { createQuote, updateQuote } = useQuotes();
   const { company } = useCompany();
   const { materials: availableMaterials } = useMaterials();
   const { templates } = useTemplates();
   const [currentStep, setCurrentStep] = useState(0);
+  const [initialized, setInitialized] = useState(false);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -48,6 +52,42 @@ export default function QuoteBuilder() {
   const [notes, setNotes] = useState('');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
+
+  // Load existing quote data in edit mode
+  useEffect(() => {
+    if (isEditMode && existingQuote && !initialized) {
+      setCustomerName(existingQuote.customer_name);
+      setCustomerEmail(existingQuote.customer_email);
+      setCustomerPhone(existingQuote.customer_phone || '');
+      setCustomerAddress(existingQuote.customer_address || '');
+      setNotes(existingQuote.notes || '');
+      setEstimatedTime((existingQuote as any).estimated_time || '');
+      
+      if (existingQuote.valid_until) {
+        const validDate = new Date(existingQuote.valid_until);
+        const now = new Date();
+        const diffDays = Math.max(1, Math.round((validDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        setValidityDays(diffDays);
+      }
+
+      const quoteItems = (existingQuote.quote_items || []).map((qi: any, idx: number) => ({
+        id: Date.now().toString() + idx,
+        description: qi.description,
+        laborPrice: qi.unit_price,
+        includeVat: qi.vat_rate > 0,
+        materials: (qi.quote_item_materials || []).map((m: any, mi: number) => ({
+          id: Date.now().toString() + idx + '-' + mi,
+          materialId: m.material_id || undefined,
+          name: m.name,
+          quantity: m.quantity,
+          unitPrice: m.unit_price,
+          unit: m.unit || 'st',
+        })),
+      }));
+      if (quoteItems.length > 0) setItems(quoteItems);
+      setInitialized(true);
+    }
+  }, [isEditMode, existingQuote, initialized]);
 
   const addItem = () => setItems([...items, emptyItem()]);
   const removeItem = (id: string) => { if (items.length > 1) setItems(items.filter(i => i.id !== id)); };
