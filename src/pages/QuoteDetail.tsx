@@ -61,8 +61,8 @@ export default function QuoteDetail() {
   const subtotal = getQuoteSubtotal(quote.items);
   const vat = getQuoteVat(quote.items);
   const total = getQuoteTotal(quote.items);
-  const canEdit = ['draft', 'sent', 'opened', 'accepted', 'revised'].includes(quote.status);
   const isLocked = ['declined', 'expired'].includes(quote.status);
+  const canEdit = !isLocked;
   const reminderDue = isReminderDue(quote);
   const publicLink = `${window.location.origin}/q/${quote.id}`;
 
