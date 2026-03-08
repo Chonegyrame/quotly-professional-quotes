@@ -101,7 +101,7 @@ export default function QuoteDetail() {
           </Button>
         </Link>
         {canEdit && (
-          <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}

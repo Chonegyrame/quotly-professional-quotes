@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { LineItemEditor } from '@/components/quote-builder/LineItemEditor';
 import { TemplateSelector } from '@/components/quote-builder/TemplateSelector';
 import { LineItem } from '@/components/quote-builder/types';
 import { formatCurrency } from '@/data/mockData';
-import { useQuotes } from '@/hooks/useQuotes';
+import { useQuotes, useQuote } from '@/hooks/useQuotes';
 import { useCompany } from '@/hooks/useCompany';
 import { useMaterials } from '@/hooks/useMaterials';
 import { useTemplates } from '@/hooks/useTemplates';
@@ -30,11 +30,15 @@ const emptyItem = (): LineItem => ({
 
 export default function QuoteBuilder() {
   const navigate = useNavigate();
-  const { createQuote } = useQuotes();
+  const { id: editId } = useParams();
+  const isEditMode = !!editId;
+  const existingQuote = useQuote(editId);
+  const { createQuote, updateQuote } = useQuotes();
   const { company } = useCompany();
   const { materials: availableMaterials } = useMaterials();
   const { templates } = useTemplates();
   const [currentStep, setCurrentStep] = useState(0);
+  const [initialized, setInitialized] = useState(false);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -48,6 +52,42 @@ export default function QuoteBuilder() {
   const [notes, setNotes] = useState('');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
+
+  // Load existing quote data in edit mode
+  useEffect(() => {
+    if (isEditMode && existingQuote && !initialized) {
+      setCustomerName(existingQuote.customer_name);
+      setCustomerEmail(existingQuote.customer_email);
+      setCustomerPhone(existingQuote.customer_phone || '');
+      setCustomerAddress(existingQuote.customer_address || '');
+      setNotes(existingQuote.notes || '');
+      setEstimatedTime((existingQuote as any).estimated_time || '');
+      
+      if (existingQuote.valid_until) {
+        const validDate = new Date(existingQuote.valid_until);
+        const now = new Date();
+        const diffDays = Math.max(1, Math.round((validDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        setValidityDays(diffDays);
+      }
+
+      const quoteItems = (existingQuote.quote_items || []).map((qi: any, idx: number) => ({
+        id: Date.now().toString() + idx,
+        description: qi.description,
+        laborPrice: qi.unit_price,
+        includeVat: qi.vat_rate > 0,
+        materials: (qi.quote_item_materials || []).map((m: any, mi: number) => ({
+          id: Date.now().toString() + idx + '-' + mi,
+          materialId: m.material_id || undefined,
+          name: m.name,
+          quantity: m.quantity,
+          unitPrice: m.unit_price,
+          unit: m.unit || 'st',
+        })),
+      }));
+      if (quoteItems.length > 0) setItems(quoteItems);
+      setInitialized(true);
+    }
+  }, [isEditMode, existingQuote, initialized]);
 
   const addItem = () => setItems([...items, emptyItem()]);
   const removeItem = (id: string) => { if (items.length > 1) setItems(items.filter(i => i.id !== id)); };
@@ -95,18 +135,16 @@ export default function QuoteBuilder() {
 
   const handleSave = async (status: 'draft' | 'sent') => {
     try {
-      // Create the quote with labor as line items
       const quoteItems = items.filter(i => i.description.trim()).map(i => ({
         description: i.description,
         quantity: 1,
         unit_price: getItemTotal(i),
         vat_rate: i.includeVat ? defaultVat : 0,
-        // Store materials separately after
         _materials: i.materials.filter(m => m.name.trim()),
         _laborPrice: i.laborPrice,
       }));
 
-      const quote = await createQuote.mutateAsync({
+      const payload = {
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
@@ -121,46 +159,56 @@ export default function QuoteBuilder() {
           unit_price: qi._laborPrice,
           vat_rate: qi.vat_rate,
         })),
-      });
+      };
+
+      let quoteId: string;
+
+      if (isEditMode && editId) {
+        await updateQuote.mutateAsync({ ...payload, quoteId: editId });
+        quoteId = editId;
+      } else {
+        const quote = await createQuote.mutateAsync(payload);
+        quoteId = quote.id;
+      }
 
       // Insert materials for each quote item
-      if (quote) {
-        const { data: savedItems } = await supabase
-          .from('quote_items')
-          .select('id, description, sort_order')
-          .eq('quote_id', quote.id)
-          .order('sort_order');
+      const { data: savedItems } = await supabase
+        .from('quote_items')
+        .select('id, description, sort_order')
+        .eq('quote_id', quoteId)
+        .order('sort_order');
 
-        if (savedItems) {
-          const materialsToInsert: any[] = [];
-          savedItems.forEach((si, idx) => {
-            const originalItem = quoteItems[idx];
-            if (originalItem?._materials) {
-              originalItem._materials.forEach((m, mi) => {
-                materialsToInsert.push({
-                  quote_item_id: si.id,
-                  material_id: m.materialId || null,
-                  name: m.name,
-                  quantity: m.quantity,
-                  unit_price: m.unitPrice,
-                  unit: m.unit,
-                  sort_order: mi,
-                });
+      if (savedItems) {
+        const materialsToInsert: any[] = [];
+        savedItems.forEach((si, idx) => {
+          const originalItem = quoteItems[idx];
+          if (originalItem?._materials) {
+            originalItem._materials.forEach((m, mi) => {
+              materialsToInsert.push({
+                quote_item_id: si.id,
+                material_id: m.materialId || null,
+                name: m.name,
+                quantity: m.quantity,
+                unit_price: m.unitPrice,
+                unit: m.unit,
+                sort_order: mi,
               });
-            }
-          });
-          if (materialsToInsert.length > 0) {
-            await supabase.from('quote_item_materials').insert(materialsToInsert);
+            });
           }
+        });
+        if (materialsToInsert.length > 0) {
+          await supabase.from('quote_item_materials').insert(materialsToInsert);
         }
       }
 
-      toast.success(status === 'sent' ? 'Quote sent!' : 'Quote saved as draft');
-      navigate('/');
+      toast.success(isEditMode ? 'Quote updated!' : (status === 'sent' ? 'Quote sent!' : 'Quote saved as draft'));
+      navigate(isEditMode ? `/quotes/${editId}` : '/');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save quote');
     }
   };
+
+  const isPending = createQuote.isPending || updateQuote.isPending;
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -168,7 +216,7 @@ export default function QuoteBuilder() {
         <Button variant="ghost" size="icon" onClick={() => currentStep > 0 ? setCurrentStep(currentStep - 1) : navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-heading font-bold">New Quote</h1>
+        <h1 className="text-xl font-heading font-bold">{isEditMode ? 'Edit Quote' : 'New Quote'}</h1>
       </div>
 
       <StepIndicator steps={steps} currentStep={currentStep} />
@@ -312,11 +360,11 @@ export default function QuoteBuilder() {
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={createQuote.isPending}>
-              <Save className="h-4 w-4" /> Save Draft
+            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={isPending}>
+              <Save className="h-4 w-4" /> {isEditMode ? 'Save' : 'Save Draft'}
             </Button>
-            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={createQuote.isPending}>
-              <Send className="h-4 w-4" /> Send Quote
+            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={isPending}>
+              <Send className="h-4 w-4" /> {isEditMode ? 'Update & Send' : 'Send Quote'}
             </Button>
           </div>
         </div>
