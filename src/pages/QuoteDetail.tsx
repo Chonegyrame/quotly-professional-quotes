@@ -16,6 +16,7 @@ export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { quotes: dbQuotes } = useQuotes();
+  const { company } = useCompany();
 
   // Map DB quote or fall back to mock
   const quote = useMemo(() => {
