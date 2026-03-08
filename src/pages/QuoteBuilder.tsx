@@ -223,6 +223,10 @@ export default function QuoteBuilder() {
           <Card>
             <CardContent className="p-4 space-y-3">
               <div>
+                <Label>Beräknad arbetstid (optional)</Label>
+                <Input placeholder="e.g. 2 dagar, 3–4 timmar" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} className="mt-1" />
+              </div>
+              <div>
                 <Label>Notes (optional)</Label>
                 <Textarea placeholder="Any additional notes for the customer..." value={notes} onChange={e => setNotes(e.target.value)} className="mt-1" />
               </div>
