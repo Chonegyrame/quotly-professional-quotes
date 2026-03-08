@@ -118,6 +118,8 @@ export function useQuotes() {
       status?: string;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
+      // Editing a quote always resets to draft unless explicitly re-sending
+      const finalStatus = input.status === 'sent' ? 'sent' : 'draft';
       const updates: any = {
         customer_name: input.customer_name,
         customer_email: input.customer_email,
@@ -126,9 +128,9 @@ export function useQuotes() {
         notes: input.notes || '',
         estimated_time: input.estimated_time || '',
         valid_until: input.valid_until,
-        status: input.status || 'draft',
+        status: finalStatus,
       };
-      if (input.status === 'sent') updates.sent_at = new Date().toISOString();
+      if (finalStatus === 'sent') updates.sent_at = new Date().toISOString();
 
       const { error } = await supabase.from('quotes').update(updates).eq('id', input.quoteId);
       if (error) throw error;

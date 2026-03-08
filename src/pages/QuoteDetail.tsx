@@ -101,8 +101,13 @@ export default function QuoteDetail() {
             <ExternalLink className="h-3.5 w-3.5" /> View as Customer
           </Button>
         </Link>
-        {canEdit && (
+        {canEdit && !isLocked && (
           <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
+            <Edit className="h-3.5 w-3.5" /> Edit
+          </Button>
+        )}
+        {isLocked && (
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0 opacity-50 cursor-not-allowed" disabled title={`Cannot edit ${quote.status} quotes`}>
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}
