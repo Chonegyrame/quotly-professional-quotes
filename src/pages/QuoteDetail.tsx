@@ -9,6 +9,8 @@ import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
 import { useMemo, useState } from 'react';
+import { useCompany } from '@/hooks/useCompany';
+import { generateQuotePdf } from '@/lib/generateQuotePdf';
 
 export default function QuoteDetail() {
   const { id } = useParams();
