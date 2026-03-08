@@ -35,6 +35,7 @@ interface PdfQuoteData {
 }
 
 export async function generateQuotePdf(data: PdfQuoteData) {
+  console.log('📄 Starting PDF generation for quote:', data.quoteNumber);
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
@@ -234,7 +235,24 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   doc.text(`${data.company.name} — Genererad med Quotly`, pageWidth / 2, footerY, { align: 'center' });
 
   // Open in new tab (works better in iframes and on mobile)
-  const pdfBlob = doc.output('blob');
-  const blobUrl = URL.createObjectURL(pdfBlob);
-  window.open(blobUrl, '_blank');
+  try {
+    const pdfBlob = doc.output('blob');
+    console.log('📄 PDF blob created, size:', pdfBlob.size);
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    console.log('📄 Opening URL:', blobUrl);
+    const opened = window.open(blobUrl, '_blank');
+    if (!opened) {
+      console.warn('📄 Popup blocked! Falling back to download link');
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${data.quoteNumber}_${data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9]/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  } catch (err) {
+    console.error('📄 PDF generation error:', err);
+    throw err;
+  }
 }
