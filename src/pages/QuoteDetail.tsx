@@ -28,6 +28,7 @@ export default function QuoteDetail() {
         customerAddress: dbQ.customer_address || '',
         status: dbQ.status as any,
         notes: dbQ.notes || '',
+        estimatedTime: (dbQ as any).estimated_time || '',
         validUntil: dbQ.valid_until || '',
         createdAt: dbQ.created_at,
         sentAt: dbQ.sent_at,
