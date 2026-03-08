@@ -11,7 +11,7 @@ export interface QuoteItem {
 export interface QuoteEvent {
   id: string;
   quoteId: string;
-  eventType: 'created' | 'sent' | 'opened' | 'accepted' | 'declined' | 'reminder_due';
+  eventType: 'created' | 'sent' | 'opened' | 'accepted' | 'declined' | 'reminder_due' | 'edited' | 'revised';
   createdAt: string;
 }
 

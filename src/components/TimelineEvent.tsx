@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Check, Send, Eye, ThumbsUp, ThumbsDown, Clock } from 'lucide-react';
+import { Check, Send, Eye, ThumbsUp, ThumbsDown, Clock, PenLine, RefreshCw } from 'lucide-react';
 import { formatDateTime } from '@/data/mockData';
 
 const eventConfig: Record<string, { icon: typeof Check; label: string; color: string }> = {
@@ -9,6 +9,8 @@ const eventConfig: Record<string, { icon: typeof Check; label: string; color: st
   accepted: { icon: ThumbsUp, label: 'Customer accepted the quote', color: 'text-success bg-success/10' },
   declined: { icon: ThumbsDown, label: 'Customer declined the quote', color: 'text-destructive bg-destructive/10' },
   reminder_due: { icon: Clock, label: 'Follow-up reminder', color: 'text-warning bg-warning/10' },
+  edited: { icon: PenLine, label: 'Quote edited', color: 'text-muted-foreground bg-muted' },
+  revised: { icon: RefreshCw, label: 'Quote revised — awaiting customer approval', color: 'text-warning bg-warning/10' },
 };
 
 interface TimelineEventProps {
