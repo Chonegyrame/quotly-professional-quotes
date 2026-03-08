@@ -135,6 +135,9 @@ export default function CustomerView() {
               </div>
             </div>
 
+            {(quote as any).estimated_time && (
+              <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimated_time}</p>
+            )}
             {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           </CardContent>
         </Card>

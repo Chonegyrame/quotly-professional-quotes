@@ -165,6 +165,9 @@ export default function QuoteDetail() {
               </div>
             </CollapsibleContent>
           </Collapsible>
+          {(quote as any).estimatedTime && (
+            <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimatedTime}</p>
+          )}
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground">Valid until: {formatDate(quote.validUntil)}</p>}
         </CardContent>
