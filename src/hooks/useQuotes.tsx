@@ -105,7 +105,67 @@ export function useQuotes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
   });
 
-  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuoteStatus };
+  const updateQuote = useMutation({
+    mutationFn: async (input: {
+      quoteId: string;
+      customer_name: string;
+      customer_email: string;
+      customer_phone?: string;
+      customer_address?: string;
+      notes?: string;
+      estimated_time?: string;
+      valid_until?: string;
+      status?: string;
+      items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
+    }) => {
+      const updates: any = {
+        customer_name: input.customer_name,
+        customer_email: input.customer_email,
+        customer_phone: input.customer_phone || '',
+        customer_address: input.customer_address || '',
+        notes: input.notes || '',
+        estimated_time: input.estimated_time || '',
+        valid_until: input.valid_until,
+        status: input.status || 'draft',
+      };
+      if (input.status === 'sent') updates.sent_at = new Date().toISOString();
+
+      const { error } = await supabase.from('quotes').update(updates).eq('id', input.quoteId);
+      if (error) throw error;
+
+      // Delete old items (cascade deletes materials)
+      await supabase.from('quote_items').delete().eq('quote_id', input.quoteId);
+
+      // Insert new items
+      const items = input.items.map((item, idx) => ({
+        quote_id: input.quoteId,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_rate: item.vat_rate,
+        sort_order: idx,
+      }));
+      const { error: itemsError } = await supabase.from('quote_items').insert(items);
+      if (itemsError) throw itemsError;
+
+      // Create event
+      await supabase.from('quote_events').insert({
+        quote_id: input.quoteId,
+        event_type: 'edited',
+      });
+
+      return input.quoteId;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+  });
+
+  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuote, updateQuoteStatus };
+}
+
+// Hook to get a single quote by ID (for edit mode)
+export function useQuote(quoteId: string | undefined) {
+  const { quotes } = useQuotes();
+  return quotes.find((q: any) => q.id === quoteId) ?? null;
 }
 
 // Hook for public customer view (no auth required)
