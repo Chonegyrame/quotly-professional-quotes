@@ -36,6 +36,9 @@ export default function QuoteDetail() {
         companyId: dbQ.company_id,
         items: (dbQ.quote_items || []).map((i: any) => ({
           id: i.id, description: i.description, quantity: i.quantity, unitPrice: i.unit_price, vatRate: i.vat_rate,
+          materials: (i.quote_item_materials || []).map((m: any) => ({
+            id: m.id, name: m.name, quantity: m.quantity, unitPrice: m.unit_price, unit: m.unit,
+          })),
         })),
         events: (dbQ.quote_events || []).map((e: any) => ({
           id: e.id, quoteId: e.quote_id, eventType: e.event_type, createdAt: e.created_at,
