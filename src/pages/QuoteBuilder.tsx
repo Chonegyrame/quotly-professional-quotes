@@ -8,7 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { StepIndicator } from '@/components/StepIndicator';
-import { formatCurrency, mockCompany } from '@/data/mockData';
+import { formatCurrency } from '@/data/mockData';
+import { useQuotes } from '@/hooks/useQuotes';
+import { useCompany } from '@/hooks/useCompany';
 import { toast } from 'sonner';
 
 interface LineItem {
@@ -23,20 +25,23 @@ const steps = ['Customer', 'Line Items', 'Preview'];
 
 export default function QuoteBuilder() {
   const navigate = useNavigate();
+  const { createQuote } = useQuotes();
+  const { company } = useCompany();
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Step 1
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
 
-  // Step 2
+  const defaultValidity = company?.default_validity_days || 30;
+  const defaultVat = company?.default_vat || 25;
+
   const [items, setItems] = useState<LineItem[]>([
     { id: '1', description: '', quantity: 1, unitPrice: 0, includeVat: true },
   ]);
   const [notes, setNotes] = useState('');
-  const [validityDays, setValidityDays] = useState(mockCompany.defaultValidityDays);
+  const [validityDays, setValidityDays] = useState(defaultValidity);
 
   const addItem = () => {
     setItems([...items, { id: Date.now().toString(), description: '', quantity: 1, unitPrice: 0, includeVat: true }]);
@@ -51,7 +56,8 @@ export default function QuoteBuilder() {
   };
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-  const vat = items.reduce((sum, i) => i.includeVat ? sum + i.quantity * i.unitPrice * 0.25 : sum, 0);
+  const vatRate = defaultVat / 100;
+  const vat = items.reduce((sum, i) => i.includeVat ? sum + i.quantity * i.unitPrice * vatRate : sum, 0);
   const total = subtotal + vat;
 
   const validUntil = new Date();
@@ -60,14 +66,28 @@ export default function QuoteBuilder() {
   const canProceedStep0 = customerName.trim() && customerEmail.trim();
   const canProceedStep1 = items.some(i => i.description.trim() && i.unitPrice > 0);
 
-  const handleSend = () => {
-    toast.success('Quote sent successfully!', { description: `Sent to ${customerEmail}` });
-    navigate('/');
-  };
-
-  const handleSaveDraft = () => {
-    toast.success('Quote saved as draft');
-    navigate('/');
+  const handleSave = async (status: 'draft' | 'sent') => {
+    try {
+      await createQuote.mutateAsync({
+        customer_name: customerName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone,
+        customer_address: customerAddress,
+        notes,
+        valid_until: validUntil.toISOString().split('T')[0],
+        status,
+        items: items.filter(i => i.description.trim()).map(i => ({
+          description: i.description,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          vat_rate: i.includeVat ? defaultVat : 0,
+        })),
+      });
+      toast.success(status === 'sent' ? 'Quote sent!' : 'Quote saved as draft');
+      navigate('/');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save quote');
+    }
   };
 
   return (
@@ -81,12 +101,9 @@ export default function QuoteBuilder() {
 
       <StepIndicator steps={steps} currentStep={currentStep} />
 
-      {/* Step 1: Customer */}
       {currentStep === 0 && (
         <Card className="animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-lg">Customer Details</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-lg">Customer Details</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="name">Name *</Label>
@@ -104,18 +121,13 @@ export default function QuoteBuilder() {
               <Label htmlFor="address">Address</Label>
               <Input id="address" placeholder="Street, City" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="mt-1" />
             </div>
-            <Button
-              className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
-              disabled={!canProceedStep0}
-              onClick={() => setCurrentStep(1)}
-            >
+            <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep0} onClick={() => setCurrentStep(1)}>
               Next <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 2: Line Items */}
       {currentStep === 1 && (
         <div className="space-y-4 animate-fade-in">
           {items.map((item, idx) => (
@@ -144,7 +156,7 @@ export default function QuoteBuilder() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label>Include VAT (25%)</Label>
+                  <Label>Include VAT ({defaultVat}%)</Label>
                   <Switch checked={item.includeVat} onCheckedChange={v => updateItem(item.id, 'includeVat', v)} />
                 </div>
               </CardContent>
@@ -168,7 +180,6 @@ export default function QuoteBuilder() {
             </CardContent>
           </Card>
 
-          {/* Summary */}
           <Card>
             <CardContent className="p-4">
               <div className="flex justify-between text-sm mb-1">
@@ -176,7 +187,7 @@ export default function QuoteBuilder() {
                 <span>{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">VAT (25%)</span>
+                <span className="text-muted-foreground">VAT ({defaultVat}%)</span>
                 <span>{formatCurrency(vat)}</span>
               </div>
               <div className="flex justify-between font-heading font-bold text-lg border-t pt-2">
@@ -186,17 +197,12 @@ export default function QuoteBuilder() {
             </CardContent>
           </Card>
 
-          <Button
-            className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
-            disabled={!canProceedStep1}
-            onClick={() => setCurrentStep(2)}
-          >
+          <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep1} onClick={() => setCurrentStep(2)}>
             Preview <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       )}
 
-      {/* Step 3: Preview */}
       {currentStep === 2 && (
         <div className="space-y-4 animate-fade-in">
           <Card>
@@ -235,7 +241,7 @@ export default function QuoteBuilder() {
 
               <div className="mt-4 space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">VAT (25%)</span><span>{formatCurrency(vat)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">VAT ({defaultVat}%)</span><span>{formatCurrency(vat)}</span></div>
                 <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
               </div>
 
@@ -244,10 +250,10 @@ export default function QuoteBuilder() {
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="gap-2" onClick={handleSaveDraft}>
+            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={createQuote.isPending}>
               <Save className="h-4 w-4" /> Save Draft
             </Button>
-            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleSend}>
+            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={createQuote.isPending}>
               <Send className="h-4 w-4" /> Send Quote
             </Button>
           </div>

@@ -4,13 +4,45 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { TimelineEvent } from '@/components/TimelineEvent';
+import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
+import { useMemo } from 'react';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const quote = mockQuotes.find(q => q.id === id);
+  const { quotes: dbQuotes } = useQuotes();
+
+  // Map DB quote or fall back to mock
+  const quote = useMemo(() => {
+    const dbQ = dbQuotes.find((q: any) => q.id === id);
+    if (dbQ) {
+      return {
+        id: dbQ.id,
+        quoteNumber: dbQ.quote_number,
+        customerName: dbQ.customer_name,
+        customerEmail: dbQ.customer_email,
+        customerPhone: dbQ.customer_phone || '',
+        customerAddress: dbQ.customer_address || '',
+        status: dbQ.status as any,
+        notes: dbQ.notes || '',
+        validUntil: dbQ.valid_until || '',
+        createdAt: dbQ.created_at,
+        sentAt: dbQ.sent_at,
+        openedAt: dbQ.opened_at,
+        acceptedAt: dbQ.accepted_at,
+        companyId: dbQ.company_id,
+        items: (dbQ.quote_items || []).map((i: any) => ({
+          id: i.id, description: i.description, quantity: i.quantity, unitPrice: i.unit_price, vatRate: i.vat_rate,
+        })),
+        events: (dbQ.quote_events || []).map((e: any) => ({
+          id: e.id, quoteId: e.quote_id, eventType: e.event_type, createdAt: e.created_at,
+        })),
+      };
+    }
+    return mockQuotes.find(q => q.id === id);
+  }, [id, dbQuotes]);
 
   if (!quote) {
     return (
@@ -54,7 +86,6 @@ export default function QuoteDetail() {
         </Card>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2 mb-4 overflow-x-auto">
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Copy Link
@@ -69,12 +100,11 @@ export default function QuoteDetail() {
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}
-        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (mock)')}>
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (coming soon)')}>
           <CopyPlus className="h-3.5 w-3.5" /> Duplicate
         </Button>
       </div>
 
-      {/* Customer info */}
       <Card className="mb-4">
         <CardContent className="p-4 space-y-1 text-sm">
           <h3 className="font-semibold mb-2">Customer</h3>
@@ -85,7 +115,6 @@ export default function QuoteDetail() {
         </CardContent>
       </Card>
 
-      {/* Line items */}
       <Card className="mb-4">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-3 text-sm">Line Items</h3>
@@ -106,21 +135,15 @@ export default function QuoteDetail() {
             <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
           </div>
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
-          <p className="mt-2 text-xs text-muted-foreground">Valid until: {formatDate(quote.validUntil)}</p>
+          {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground">Valid until: {formatDate(quote.validUntil)}</p>}
         </CardContent>
       </Card>
 
-      {/* Timeline */}
       <Card>
         <CardContent className="p-4">
           <h3 className="font-semibold mb-3 text-sm">Timeline</h3>
           {quote.events.map((event, idx) => (
-            <TimelineEvent
-              key={event.id}
-              eventType={event.eventType}
-              createdAt={event.createdAt}
-              isLast={idx === quote.events.length - 1}
-            />
+            <TimelineEvent key={event.id} eventType={event.eventType} createdAt={event.createdAt} isLast={idx === quote.events.length - 1} />
           ))}
         </CardContent>
       </Card>

@@ -1,15 +1,20 @@
 import { Link, useLocation } from 'react-router-dom';
-import { FileText, LayoutDashboard, Settings, Plus, LogOut } from 'lucide-react';
+import { FileText, LayoutDashboard, Settings, Plus, BarChart3, BookTemplate, Package, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/templates', icon: BookTemplate, label: 'Templates' },
+  { to: '/materials', icon: Package, label: 'Materials' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export function Navbar() {
   const location = useLocation();
+  const { signOut } = useAuth();
 
   return (
     <>
@@ -40,12 +45,15 @@ export function Navbar() {
               New Quote
             </Button>
           </Link>
+          <Button variant="ghost" size="sm" className="ml-1 gap-2 text-muted-foreground" onClick={signOut}>
+            <LogOut className="h-4 w-4" />
+          </Button>
         </nav>
       </header>
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex md:hidden border-t bg-card px-2 py-1 safe-area-bottom">
-        {navItems.map((item) => (
+        {[navItems[0], navItems[1], navItems[4]].map((item) => (
           <Link key={item.to} to={item.to} className="flex-1">
             <button className={cn(
               'flex w-full flex-col items-center gap-0.5 py-2 text-xs',

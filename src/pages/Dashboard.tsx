@@ -4,6 +4,7 @@ import { Plus, FileText, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { QuoteCard } from '@/components/QuoteCard';
+import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, type QuoteStatus, getQuoteTotal, formatCurrency } from '@/data/mockData';
 
 const filters: { label: string; value: QuoteStatus | 'all' }[] = [
@@ -18,27 +19,67 @@ const filters: { label: string; value: QuoteStatus | 'all' }[] = [
 
 export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState<QuoteStatus | 'all'>('all');
+  const { quotes: dbQuotes, isLoading } = useQuotes();
+
+  // Use real DB quotes if available, otherwise show mock data
+  const hasDbQuotes = dbQuotes.length > 0;
+
+  // Map DB quotes to match the mock format
+  const displayQuotes = useMemo(() => {
+    if (!hasDbQuotes) return mockQuotes;
+    return dbQuotes.map((q: any) => ({
+      id: q.id,
+      quoteNumber: q.quote_number,
+      customerName: q.customer_name,
+      customerEmail: q.customer_email,
+      customerPhone: q.customer_phone || '',
+      customerAddress: q.customer_address || '',
+      status: q.status as QuoteStatus,
+      notes: q.notes || '',
+      validUntil: q.valid_until || '',
+      createdAt: q.created_at,
+      sentAt: q.sent_at,
+      openedAt: q.opened_at,
+      acceptedAt: q.accepted_at,
+      companyId: q.company_id,
+      items: (q.quote_items || []).map((i: any) => ({
+        id: i.id,
+        description: i.description,
+        quantity: i.quantity,
+        unitPrice: i.unit_price,
+        vatRate: i.vat_rate,
+      })),
+      events: (q.quote_events || []).map((e: any) => ({
+        id: e.id,
+        quoteId: e.quote_id,
+        eventType: e.event_type,
+        createdAt: e.created_at,
+      })),
+    }));
+  }, [dbQuotes, hasDbQuotes]);
 
   const stats = useMemo(() => {
-    const total = mockQuotes.length;
-    const accepted = mockQuotes.filter(q => q.status === 'accepted').length;
-    const pending = mockQuotes.filter(q => ['sent', 'opened'].includes(q.status)).length;
-    const declined = mockQuotes.filter(q => q.status === 'declined').length;
-    const totalValue = mockQuotes.filter(q => q.status === 'accepted').reduce((sum, q) => sum + getQuoteTotal(q.items), 0);
+    const total = displayQuotes.length;
+    const accepted = displayQuotes.filter(q => q.status === 'accepted').length;
+    const pending = displayQuotes.filter(q => ['sent', 'opened'].includes(q.status)).length;
+    const declined = displayQuotes.filter(q => q.status === 'declined').length;
+    const totalValue = displayQuotes.filter(q => q.status === 'accepted').reduce((sum, q) => sum + getQuoteTotal(q.items), 0);
     return { total, accepted, pending, declined, totalValue };
-  }, []);
+  }, [displayQuotes]);
 
   const filteredQuotes = useMemo(() => {
-    if (activeFilter === 'all') return mockQuotes;
-    return mockQuotes.filter(q => q.status === activeFilter);
-  }, [activeFilter]);
+    if (activeFilter === 'all') return displayQuotes;
+    return displayQuotes.filter(q => q.status === activeFilter);
+  }, [activeFilter, displayQuotes]);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-4xl mx-auto animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-heading font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Manage your quotes</p>
+          <p className="text-sm text-muted-foreground">
+            {hasDbQuotes ? 'Manage your quotes' : 'Sample data — create your first quote!'}
+          </p>
         </div>
         <Link to="/quotes/new" className="md:hidden">
           <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
@@ -114,11 +155,15 @@ export default function Dashboard() {
       </div>
 
       {/* Quote list */}
-      <div className="space-y-2">
-        {filteredQuotes.map(quote => (
-          <QuoteCard key={quote.id} quote={quote} />
-        ))}
-      </div>
+      {isLoading ? (
+        <p className="text-center text-muted-foreground py-8">Loading quotes...</p>
+      ) : (
+        <div className="space-y-2">
+          {filteredQuotes.map(quote => (
+            <QuoteCard key={quote.id} quote={quote} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
