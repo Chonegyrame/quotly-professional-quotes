@@ -8,7 +8,7 @@ import { TimelineEvent } from '@/components/TimelineEvent';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 export default function QuoteDetail() {
   const { id } = useParams();
