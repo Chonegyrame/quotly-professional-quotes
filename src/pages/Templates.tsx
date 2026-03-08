@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from '@/hooks/useCompany';
@@ -31,16 +30,13 @@ export default function Templates() {
   const navigate = useNavigate();
   const { company } = useCompany();
   const queryClient = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newCategory, setNewCategory] = useState('general');
-  const [newDesc, setNewDesc] = useState('');
 
-  // Edit state
-  const [editItem, setEditItem] = useState<any>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategory, setEditCategory] = useState('');
-  const [editDesc, setEditDesc] = useState('');
+  // Shared form state for both add & edit
+  const [formMode, setFormMode] = useState<'none' | 'add' | 'edit'>('none');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formCategory, setFormCategory] = useState('general');
+  const [formDesc, setFormDesc] = useState('');
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['templates', company?.id],
@@ -57,38 +53,50 @@ export default function Templates() {
     enabled: !!company,
   });
 
-  const addTemplate = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from('quote_templates').insert({
-        company_id: company!.id,
-        name: newName,
-        category: newCategory,
-        description: newDesc,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
-      setShowAdd(false);
-      setNewName('');
-      setNewDesc('');
-      toast.success('Template added');
-    },
-  });
+  const resetForm = () => {
+    setFormMode('none');
+    setEditId(null);
+    setFormName('');
+    setFormCategory('general');
+    setFormDesc('');
+  };
 
-  const updateTemplate = useMutation({
+  const openAdd = () => {
+    resetForm();
+    setFormMode('add');
+  };
+
+  const openEdit = (t: any) => {
+    setFormMode('edit');
+    setEditId(t.id);
+    setFormName(t.name);
+    setFormCategory(t.category || 'general');
+    setFormDesc(t.description || '');
+  };
+
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('quote_templates').update({
-        name: editName,
-        category: editCategory,
-        description: editDesc,
-      }).eq('id', editItem.id);
-      if (error) throw error;
+      if (formMode === 'edit' && editId) {
+        const { error } = await supabase.from('quote_templates').update({
+          name: formName,
+          category: formCategory,
+          description: formDesc,
+        }).eq('id', editId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('quote_templates').insert({
+          company_id: company!.id,
+          name: formName,
+          category: formCategory,
+          description: formDesc,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      setEditItem(null);
-      toast.success('Template updated');
+      toast.success(formMode === 'edit' ? 'Template updated' : 'Template added');
+      resetForm();
     },
   });
 
@@ -103,29 +111,22 @@ export default function Templates() {
     },
   });
 
-  const openEdit = (t: any) => {
-    setEditItem(t);
-    setEditName(t.name);
-    setEditCategory(t.category || 'general');
-    setEditDesc(t.description || '');
-  };
-
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}><ArrowLeft className="h-5 w-5" /></Button>
         <h1 className="text-xl font-heading font-bold flex-1">Quote Templates</h1>
-        <Button size="sm" className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => setShowAdd(!showAdd)}>
+        <Button size="sm" className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90" onClick={openAdd}>
           <Plus className="h-4 w-4" /> Add
         </Button>
       </div>
 
-      {showAdd && (
+      {formMode !== 'none' && (
         <Card className="mb-4 animate-fade-in">
           <CardContent className="p-4 space-y-3">
             <div>
               <Label>Template Name *</Label>
-              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Bathroom Rewire" className="mt-1" />
+              <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Bathroom Rewire" className="mt-1" />
             </div>
             <div>
               <Label>Category</Label>
@@ -133,8 +134,8 @@ export default function Templates() {
                 {Object.entries(categoryLabels).map(([key, label]) => (
                   <button
                     key={key}
-                    onClick={() => setNewCategory(key)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${newCategory === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+                    onClick={() => setFormCategory(key)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${formCategory === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
                   >
                     {label}
                   </button>
@@ -143,11 +144,14 @@ export default function Templates() {
             </div>
             <div>
               <Label>Description</Label>
-              <Input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Brief description..." className="mt-1" />
+              <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Brief description..." className="mt-1" />
             </div>
-            <Button disabled={!newName.trim() || addTemplate.isPending} onClick={() => addTemplate.mutate()} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-              Save Template
-            </Button>
+            <div className="flex gap-2">
+              <Button disabled={!formName.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate()} className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90">
+                {formMode === 'edit' ? 'Save Changes' : 'Save Template'}
+              </Button>
+              <Button variant="outline" onClick={resetForm}>Cancel</Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -160,8 +164,9 @@ export default function Templates() {
         <div className="space-y-2">
           {templates.map((t: any) => {
             const Icon = categoryIcons[t.category] || Wrench;
+            const isEditing = formMode === 'edit' && editId === t.id;
             return (
-              <Card key={t.id}>
+              <Card key={t.id} className={isEditing ? 'ring-2 ring-primary' : ''}>
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Icon className="h-5 w-5 text-primary" />
@@ -182,45 +187,6 @@ export default function Templates() {
           })}
         </div>
       )}
-
-      {/* Edit Dialog */}
-      <Dialog open={!!editItem} onOpenChange={open => { if (!open) setEditItem(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Template</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Template Name *</Label>
-              <Input value={editName} onChange={e => setEditName(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label>Category</Label>
-              <div className="flex gap-2 mt-1 flex-wrap">
-                {Object.entries(categoryLabels).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setEditCategory(key)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${editCategory === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="mt-1" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
-            <Button disabled={!editName.trim() || updateTemplate.isPending} onClick={() => updateTemplate.mutate()}>
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
