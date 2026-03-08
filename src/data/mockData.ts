@@ -1,4 +1,4 @@
-export type QuoteStatus = 'draft' | 'sent' | 'opened' | 'accepted' | 'declined' | 'expired';
+export type QuoteStatus = 'draft' | 'sent' | 'opened' | 'accepted' | 'declined' | 'expired' | 'revised';
 
 export interface QuoteItem {
   id: string;
