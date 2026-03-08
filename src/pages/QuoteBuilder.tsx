@@ -135,18 +135,16 @@ export default function QuoteBuilder() {
 
   const handleSave = async (status: 'draft' | 'sent') => {
     try {
-      // Create the quote with labor as line items
       const quoteItems = items.filter(i => i.description.trim()).map(i => ({
         description: i.description,
         quantity: 1,
         unit_price: getItemTotal(i),
         vat_rate: i.includeVat ? defaultVat : 0,
-        // Store materials separately after
         _materials: i.materials.filter(m => m.name.trim()),
         _laborPrice: i.laborPrice,
       }));
 
-      const quote = await createQuote.mutateAsync({
+      const payload = {
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
@@ -161,46 +159,56 @@ export default function QuoteBuilder() {
           unit_price: qi._laborPrice,
           vat_rate: qi.vat_rate,
         })),
-      });
+      };
+
+      let quoteId: string;
+
+      if (isEditMode && editId) {
+        await updateQuote.mutateAsync({ ...payload, quoteId: editId });
+        quoteId = editId;
+      } else {
+        const quote = await createQuote.mutateAsync(payload);
+        quoteId = quote.id;
+      }
 
       // Insert materials for each quote item
-      if (quote) {
-        const { data: savedItems } = await supabase
-          .from('quote_items')
-          .select('id, description, sort_order')
-          .eq('quote_id', quote.id)
-          .order('sort_order');
+      const { data: savedItems } = await supabase
+        .from('quote_items')
+        .select('id, description, sort_order')
+        .eq('quote_id', quoteId)
+        .order('sort_order');
 
-        if (savedItems) {
-          const materialsToInsert: any[] = [];
-          savedItems.forEach((si, idx) => {
-            const originalItem = quoteItems[idx];
-            if (originalItem?._materials) {
-              originalItem._materials.forEach((m, mi) => {
-                materialsToInsert.push({
-                  quote_item_id: si.id,
-                  material_id: m.materialId || null,
-                  name: m.name,
-                  quantity: m.quantity,
-                  unit_price: m.unitPrice,
-                  unit: m.unit,
-                  sort_order: mi,
-                });
+      if (savedItems) {
+        const materialsToInsert: any[] = [];
+        savedItems.forEach((si, idx) => {
+          const originalItem = quoteItems[idx];
+          if (originalItem?._materials) {
+            originalItem._materials.forEach((m, mi) => {
+              materialsToInsert.push({
+                quote_item_id: si.id,
+                material_id: m.materialId || null,
+                name: m.name,
+                quantity: m.quantity,
+                unit_price: m.unitPrice,
+                unit: m.unit,
+                sort_order: mi,
               });
-            }
-          });
-          if (materialsToInsert.length > 0) {
-            await supabase.from('quote_item_materials').insert(materialsToInsert);
+            });
           }
+        });
+        if (materialsToInsert.length > 0) {
+          await supabase.from('quote_item_materials').insert(materialsToInsert);
         }
       }
 
-      toast.success(status === 'sent' ? 'Quote sent!' : 'Quote saved as draft');
-      navigate('/');
+      toast.success(isEditMode ? 'Quote updated!' : (status === 'sent' ? 'Quote sent!' : 'Quote saved as draft'));
+      navigate(isEditMode ? `/quotes/${editId}` : '/');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save quote');
     }
   };
+
+  const isPending = createQuote.isPending || updateQuote.isPending;
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
