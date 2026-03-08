@@ -114,7 +114,7 @@ export function usePublicQuote(quoteId: string | undefined) {
       if (!quoteId) return null;
       const { data, error } = await supabase
         .from('quotes')
-        .select('*, quote_items(*), quote_events(*)')
+        .select('*, quote_items(*, quote_item_materials(*)), quote_events(*)')
         .eq('id', quoteId)
         .maybeSingle();
       if (error) throw error;
