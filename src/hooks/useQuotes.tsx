@@ -28,6 +28,7 @@ export function useQuotes() {
       customer_phone?: string;
       customer_address?: string;
       notes?: string;
+      estimated_time?: string;
       valid_until?: string;
       status?: string;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
