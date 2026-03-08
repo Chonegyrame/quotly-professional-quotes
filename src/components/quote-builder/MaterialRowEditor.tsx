@@ -71,8 +71,8 @@ export function MaterialRowEditor({ material, availableMaterials, onChange, onRe
             <Input
               type="number"
               min="1"
-              value={material.quantity}
-              onChange={e => onChange({ ...material, quantity: parseFloat(e.target.value) || 1 })}
+              value={material.quantity === 0 ? '' : material.quantity}
+              onChange={e => onChange({ ...material, quantity: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
               className="text-sm h-8"
               placeholder="Qty"
             />
