@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Wrench, Zap, Droplets, Paintbrush, Hammer, Trash2, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Wrench, Zap, Droplets, Paintbrush, Hammer, Trash2, Pencil, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MaterialRowEditor } from '@/components/quote-builder/MaterialRowEditor';
+import { MaterialRow } from '@/components/quote-builder/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from '@/hooks/useCompany';
+import { useMaterials } from '@/hooks/useMaterials';
 import { toast } from 'sonner';
 
 const categoryIcons: Record<string, any> = {
@@ -26,17 +29,26 @@ const categoryLabels: Record<string, string> = {
   general: 'General',
 };
 
+const emptyMaterial = (): MaterialRow => ({
+  id: Date.now().toString() + Math.random(),
+  name: '',
+  quantity: 1,
+  unitPrice: 0,
+  unit: 'st',
+});
+
 export default function Templates() {
   const navigate = useNavigate();
   const { company } = useCompany();
   const queryClient = useQueryClient();
+  const { materials: availableMaterials } = useMaterials();
 
-  // Shared form state for both add & edit
   const [formMode, setFormMode] = useState<'none' | 'add' | 'edit'>('none');
   const [editId, setEditId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('general');
   const [formDesc, setFormDesc] = useState('');
+  const [formMaterials, setFormMaterials] = useState<MaterialRow[]>([]);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['templates', company?.id],
@@ -59,6 +71,7 @@ export default function Templates() {
     setFormName('');
     setFormCategory('general');
     setFormDesc('');
+    setFormMaterials([]);
   };
 
   const openAdd = () => {
@@ -72,15 +85,45 @@ export default function Templates() {
     setFormName(t.name);
     setFormCategory(t.category || 'general');
     setFormDesc(t.description || '');
+    // Load materials from default_items
+    const items = Array.isArray(t.default_items) ? t.default_items : [];
+    const mats = items.length > 0 && items[0]?.materials
+      ? items[0].materials.map((m: any, i: number) => ({
+          id: Date.now().toString() + i,
+          materialId: m.material_id || undefined,
+          name: m.name || '',
+          quantity: m.quantity || 1,
+          unitPrice: m.unit_price || 0,
+          unit: m.unit || 'st',
+        }))
+      : [];
+    setFormMaterials(mats);
+  };
+
+  const buildDefaultItems = () => {
+    const mats = formMaterials.filter(m => m.name.trim());
+    return [{
+      description: formName,
+      labor_price: 0,
+      materials: mats.map(m => ({
+        material_id: m.materialId || null,
+        name: m.name,
+        quantity: m.quantity,
+        unit_price: m.unitPrice,
+        unit: m.unit,
+      })),
+    }];
   };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const defaultItems = buildDefaultItems();
       if (formMode === 'edit' && editId) {
         const { error } = await supabase.from('quote_templates').update({
           name: formName,
           category: formCategory,
           description: formDesc,
+          default_items: defaultItems,
         }).eq('id', editId);
         if (error) throw error;
       } else {
@@ -89,6 +132,7 @@ export default function Templates() {
           name: formName,
           category: formCategory,
           description: formDesc,
+          default_items: defaultItems,
         });
         if (error) throw error;
       }
@@ -110,6 +154,20 @@ export default function Templates() {
       toast.success('Template removed');
     },
   });
+
+  const addMaterialRow = () => setFormMaterials([...formMaterials, emptyMaterial()]);
+  const updateMaterialRow = (id: string, updated: MaterialRow) =>
+    setFormMaterials(formMaterials.map(m => m.id === id ? updated : m));
+  const removeMaterialRow = (id: string) =>
+    setFormMaterials(formMaterials.filter(m => m.id !== id));
+
+  const getTemplateMaterialCount = (t: any) => {
+    const items = Array.isArray(t.default_items) ? t.default_items : [];
+    if (items.length > 0 && Array.isArray(items[0]?.materials)) {
+      return items[0].materials.filter((m: any) => m.name).length;
+    }
+    return 0;
+  };
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -146,6 +204,31 @@ export default function Templates() {
               <Label>Description</Label>
               <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Brief description..." className="mt-1" />
             </div>
+
+            {/* Materials section */}
+            <div>
+              <Label className="flex items-center gap-1.5 mb-2">
+                <Package className="h-4 w-4 text-muted-foreground" />
+                Default Materials
+              </Label>
+              {formMaterials.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {formMaterials.map(m => (
+                    <MaterialRowEditor
+                      key={m.id}
+                      material={m}
+                      availableMaterials={availableMaterials}
+                      onChange={updated => updateMaterialRow(m.id, updated)}
+                      onRemove={() => removeMaterialRow(m.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs" onClick={addMaterialRow}>
+                <Plus className="h-3.5 w-3.5" /> Add Material
+              </Button>
+            </div>
+
             <div className="flex gap-2">
               <Button disabled={!formName.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate()} className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90">
                 {formMode === 'edit' ? 'Save Changes' : 'Save Template'}
@@ -165,6 +248,7 @@ export default function Templates() {
           {templates.map((t: any) => {
             const Icon = categoryIcons[t.category] || Wrench;
             const isEditing = formMode === 'edit' && editId === t.id;
+            const matCount = getTemplateMaterialCount(t);
             return (
               <Card key={t.id} className={isEditing ? 'ring-2 ring-primary' : ''}>
                 <CardContent className="p-4 flex items-center gap-3">
@@ -173,7 +257,11 @@ export default function Templates() {
                   </div>
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(t)}>
                     <p className="font-semibold text-sm truncate">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{categoryLabels[t.category] || t.category}{t.description ? ` · ${t.description}` : ''}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {categoryLabels[t.category] || t.category}
+                      {t.description ? ` · ${t.description}` : ''}
+                      {matCount > 0 ? ` · ${matCount} material${matCount > 1 ? 's' : ''}` : ''}
+                    </p>
                   </div>
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => openEdit(t)}>
                     <Pencil className="h-4 w-4 text-muted-foreground" />
