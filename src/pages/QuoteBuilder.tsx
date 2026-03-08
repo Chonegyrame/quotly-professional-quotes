@@ -304,6 +304,9 @@ export default function QuoteBuilder() {
                 <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
               </div>
 
+              {estimatedTime && (
+                <div className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {estimatedTime}</div>
+              )}
               {notes && <p className="mt-3 text-sm text-muted-foreground italic">{notes}</p>}
             </CardContent>
           </Card>
