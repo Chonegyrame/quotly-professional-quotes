@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+// @ts-ignore
 import 'jspdf-autotable';
 import { formatCurrency, formatDate } from '@/data/mockData';
 
@@ -232,8 +233,8 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   doc.setTextColor(...muted);
   doc.text(`${data.company.name} — Genererad med Quotly`, pageWidth / 2, footerY, { align: 'center' });
 
-  // Save
-  const safeName = data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9]/g, '_');
-  const safeNumber = data.quoteNumber.replace(/[^a-zA-Z0-9-]/g, '_');
-  doc.save(`${safeNumber}_${safeName}.pdf`);
+  // Open in new tab (works better in iframes and on mobile)
+  const pdfBlob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(pdfBlob);
+  window.open(blobUrl, '_blank');
 }
