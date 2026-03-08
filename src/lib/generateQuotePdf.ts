@@ -41,9 +41,9 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   let y = margin;
 
   // Colors
-  const primary = [30, 58, 95]; // dark blue
-  const muted = [120, 120, 120];
-  const black = [20, 20, 20];
+  const primary: [number, number, number] = [30, 58, 95];
+  const muted: [number, number, number] = [120, 120, 120];
+  const black: [number, number, number] = [20, 20, 20];
 
   // === Company Header ===
   doc.setFontSize(18);
