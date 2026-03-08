@@ -94,26 +94,30 @@ export default function CustomerView() {
             </div>
 
             <div className="border rounded-lg overflow-hidden mb-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-secondary">
-                    <th className="text-left p-2 font-medium">Beskrivning</th>
-                    <th className="text-right p-2 font-medium">Antal</th>
-                    <th className="text-right p-2 font-medium">Pris</th>
-                    <th className="text-right p-2 font-medium">Summa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item: any) => (
-                    <tr key={item.id} className="border-t">
-                      <td className="p-2">{item.description}</td>
-                      <td className="p-2 text-right">{item.quantity}</td>
-                      <td className="p-2 text-right">{formatCurrency(item.unit_price)}</td>
-                      <td className="p-2 text-right">{formatCurrency(item.quantity * item.unit_price)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {items.map((item: any) => {
+                const mats = item.quote_item_materials || [];
+                const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unit_price, 0);
+                return (
+                  <div key={item.id} className="border-b last:border-b-0 p-3">
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>{item.description}</span>
+                      <span>{formatCurrency(item.quantity * item.unit_price + matsTotal)}</span>
+                    </div>
+                    {item.unit_price > 0 && (
+                      <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
+                        <span>Arbete</span>
+                        <span>{formatCurrency(item.quantity * item.unit_price)}</span>
+                      </div>
+                    )}
+                    {mats.length > 0 && mats.map((m: any) => (
+                      <div key={m.id} className="flex justify-between text-xs text-muted-foreground mt-0.5 pl-3">
+                        <span>{m.quantity} × {m.name}</span>
+                        <span>{formatCurrency(m.quantity * m.unit_price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="space-y-1 text-sm">
