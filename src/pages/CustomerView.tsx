@@ -40,8 +40,14 @@ export default function CustomerView() {
   }
 
   const items = quote.quote_items || [];
-  const subtotal = items.reduce((s: number, i: any) => s + i.quantity * i.unit_price, 0);
-  const vat = items.reduce((s: number, i: any) => s + i.quantity * i.unit_price * (i.vat_rate / 100), 0);
+  const subtotal = items.reduce((s: number, i: any) => {
+    const matsTotal = (i.quote_item_materials || []).reduce((ms: number, m: any) => ms + m.quantity * m.unit_price, 0);
+    return s + i.quantity * i.unit_price + matsTotal;
+  }, 0);
+  const vat = items.reduce((s: number, i: any) => {
+    const matsTotal = (i.quote_item_materials || []).reduce((ms: number, m: any) => ms + m.quantity * m.unit_price, 0);
+    return s + (i.quantity * i.unit_price + matsTotal) * (i.vat_rate / 100);
+  }, 0);
   const total = subtotal + vat;
 
   const handleAccept = async () => {
