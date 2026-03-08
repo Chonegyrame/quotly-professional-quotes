@@ -118,8 +118,28 @@ export function useQuotes() {
       status?: string;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
-      // Editing a quote always resets to draft unless explicitly re-sending
-      const finalStatus = input.status === 'sent' ? 'sent' : 'draft';
+      // Determine the right status after edit
+      // If previously accepted → set to "revised" (needs customer re-approval)
+      // If sent/opened → reset to "draft" unless re-sending
+      // Get current quote to check previous status
+      const { data: currentQuote } = await supabase
+        .from('quotes')
+        .select('status')
+        .eq('id', input.quoteId)
+        .single();
+
+      const prevStatus = currentQuote?.status;
+      let finalStatus: string;
+
+      if (prevStatus === 'accepted' || prevStatus === 'revised') {
+        // Accepted quotes go to "revised" — customer must re-approve
+        finalStatus = input.status === 'sent' ? 'revised' : 'revised';
+      } else if (input.status === 'sent') {
+        finalStatus = 'sent';
+      } else {
+        finalStatus = 'draft';
+      }
+
       const updates: any = {
         customer_name: input.customer_name,
         customer_email: input.customer_email,
