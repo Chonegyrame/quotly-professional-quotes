@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Wrench, Zap, Droplets, Paintbrush, Hammer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Wrench, Zap, Droplets, Paintbrush, Hammer, Trash2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from '@/hooks/useCompany';
@@ -34,6 +35,12 @@ export default function Templates() {
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('general');
   const [newDesc, setNewDesc] = useState('');
+
+  // Edit state
+  const [editItem, setEditItem] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['templates', company?.id],
@@ -69,6 +76,22 @@ export default function Templates() {
     },
   });
 
+  const updateTemplate = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('quote_templates').update({
+        name: editName,
+        category: editCategory,
+        description: editDesc,
+      }).eq('id', editItem.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      setEditItem(null);
+      toast.success('Template updated');
+    },
+  });
+
   const deleteTemplate = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('quote_templates').delete().eq('id', id);
@@ -79,6 +102,13 @@ export default function Templates() {
       toast.success('Template removed');
     },
   });
+
+  const openEdit = (t: any) => {
+    setEditItem(t);
+    setEditName(t.name);
+    setEditCategory(t.category || 'general');
+    setEditDesc(t.description || '');
+  };
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -136,10 +166,13 @@ export default function Templates() {
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Icon className="h-5 w-5 text-primary" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(t)}>
                     <p className="font-semibold text-sm truncate">{t.name}</p>
                     <p className="text-xs text-muted-foreground">{categoryLabels[t.category] || t.category}{t.description ? ` · ${t.description}` : ''}</p>
                   </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => openEdit(t)}>
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => deleteTemplate.mutate(t.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -149,6 +182,45 @@ export default function Templates() {
           })}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editItem} onOpenChange={open => { if (!open) setEditItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Template Name *</Label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Category</Label>
+              <div className="flex gap-2 mt-1 flex-wrap">
+                {Object.entries(categoryLabels).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setEditCategory(key)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${editCategory === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button disabled={!editName.trim() || updateTemplate.isPending} onClick={() => updateTemplate.mutate()}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
