@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { Check, FileText } from 'lucide-react';
+import { Check, FileText, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,13 +11,20 @@ import { formatCurrency, formatDate } from '@/data/mockData';
 export default function CustomerView() {
   const { id } = useParams();
   const { data: quote, isLoading } = usePublicQuote(id);
-  const [accepted, setAccepted] = useState(false);
+  const [responded, setResponded] = useState(false);
+  const [responseType, setResponseType] = useState<'accepted' | 'declined'>('accepted');
   const [message, setMessage] = useState('');
+
+  const isRevised = quote?.status === 'revised';
+  const isAlreadyAccepted = quote?.status === 'accepted';
+  const isDeclined = quote?.status === 'declined';
 
   // Track opened
   useState(() => {
     if (id) {
-      supabase.from('quotes').update({ opened_at: new Date().toISOString(), status: 'opened' }).eq('id', id).is('opened_at', null).then(() => {
+      // Only mark as opened if it's sent (not revised — we want to keep revised status)
+      const statusUpdate = quote?.status === 'sent' ? { opened_at: new Date().toISOString(), status: 'opened' } : { opened_at: new Date().toISOString() };
+      supabase.from('quotes').update(statusUpdate).eq('id', id).is('opened_at', null).then(() => {
         supabase.from('quote_events').insert({ quote_id: id, event_type: 'opened' });
       });
     }
@@ -56,21 +63,66 @@ export default function CustomerView() {
       accepted_at: new Date().toISOString(),
     }).eq('id', quote.id);
     await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'accepted' });
-    setAccepted(true);
+    setResponseType('accepted');
+    setResponded(true);
   };
 
-  if (accepted) {
+  const handleDecline = async () => {
+    await supabase.from('quotes').update({
+      status: 'declined',
+    }).eq('id', quote.id);
+    await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'declined' });
+    setResponseType('declined');
+    setResponded(true);
+  };
+
+  if (responded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="text-center animate-fade-in max-w-sm">
+          <div className={`flex h-16 w-16 items-center justify-center rounded-full mx-auto mb-4 ${responseType === 'accepted' ? 'bg-success/10' : 'bg-destructive/10'}`}>
+            {responseType === 'accepted' ? <Check className="h-8 w-8 text-success" /> : <X className="h-8 w-8 text-destructive" />}
+          </div>
+          <h1 className="text-2xl font-heading font-bold mb-2">
+            {responseType === 'accepted' ? 'Offerten accepterad!' : 'Offerten nekad'}
+          </h1>
+          <p className="text-muted-foreground text-sm mb-4">
+            {responseType === 'accepted'
+              ? 'Tack! Företaget har fått en notifikation och kommer att kontakta dig inom kort.'
+              : 'Företaget har informerats om ditt beslut.'}
+          </p>
+          {message && (
+            <Card><CardContent className="p-3 text-sm"><span className="text-muted-foreground">Ditt meddelande:</span><p className="mt-1">{message}</p></CardContent></Card>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Already accepted and not revised — show confirmation
+  if (isAlreadyAccepted) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="text-center animate-fade-in max-w-sm">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 mx-auto mb-4">
             <Check className="h-8 w-8 text-success" />
           </div>
-          <h1 className="text-2xl font-heading font-bold mb-2">Offerten accepterad!</h1>
-          <p className="text-muted-foreground text-sm mb-4">Tack! Företaget har fått en notifikation och kommer att kontakta dig inom kort.</p>
-          {message && (
-            <Card><CardContent className="p-3 text-sm"><span className="text-muted-foreground">Ditt meddelande:</span><p className="mt-1">{message}</p></CardContent></Card>
-          )}
+          <h1 className="text-2xl font-heading font-bold mb-2">Offerten är accepterad</h1>
+          <p className="text-muted-foreground text-sm">Denna offert har redan godkänts. Kontakta företaget vid frågor.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isDeclined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="text-center animate-fade-in max-w-sm">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 mx-auto mb-4">
+            <X className="h-8 w-8 text-destructive" />
+          </div>
+          <h1 className="text-2xl font-heading font-bold mb-2">Offerten nekad</h1>
+          <p className="text-muted-foreground text-sm">Denna offert har nekats. Kontakta företaget om du vill diskutera vidare.</p>
         </div>
       </div>
     );
@@ -142,11 +194,26 @@ export default function CustomerView() {
           </CardContent>
         </Card>
 
+        {isRevised && (
+          <Card className="mb-4 border-warning/50 bg-warning/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <RefreshCw className="h-5 w-5 text-warning shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-warning">Offerten har reviderats</p>
+                <p className="text-xs text-muted-foreground">Företaget har gjort ändringar i offerten. Granska och godkänn eller neka de nya villkoren.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardContent className="p-4 space-y-3">
             <Textarea placeholder="Meddelande (valfritt)..." value={message} onChange={e => setMessage(e.target.value)} rows={2} />
             <Button className="w-full h-14 text-lg font-heading font-bold gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleAccept}>
-              <Check className="h-5 w-5" /> Acceptera offert
+              <Check className="h-5 w-5" /> {isRevised ? 'Godkänn ändringarna' : 'Acceptera offert'}
+            </Button>
+            <Button variant="outline" className="w-full gap-2 text-destructive hover:text-destructive" onClick={handleDecline}>
+              <X className="h-4 w-4" /> {isRevised ? 'Neka ändringarna' : 'Neka offert'}
             </Button>
             <p className="text-xs text-center text-muted-foreground">Genom att acceptera godkänner du villkoren i offerten</p>
           </CardContent>
