@@ -35,6 +35,7 @@ interface PdfQuoteData {
 }
 
 export async function generateQuotePdf(data: PdfQuoteData) {
+  console.log('📄 Starting PDF generation for quote:', data.quoteNumber);
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
