@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+// @ts-ignore
 import 'jspdf-autotable';
 import { formatCurrency, formatDate } from '@/data/mockData';
 
