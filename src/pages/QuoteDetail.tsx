@@ -36,6 +36,9 @@ export default function QuoteDetail() {
         companyId: dbQ.company_id,
         items: (dbQ.quote_items || []).map((i: any) => ({
           id: i.id, description: i.description, quantity: i.quantity, unitPrice: i.unit_price, vatRate: i.vat_rate,
+          materials: (i.quote_item_materials || []).map((m: any) => ({
+            id: m.id, name: m.name, quantity: m.quantity, unitPrice: m.unit_price, unit: m.unit,
+          })),
         })),
         events: (dbQ.quote_events || []).map((e: any) => ({
           id: e.id, quoteId: e.quote_id, eventType: e.event_type, createdAt: e.created_at,
@@ -128,15 +131,31 @@ export default function QuoteDetail() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="space-y-3 mt-4 pt-3 border-t">
-                {quote.items.map(item => (
-                  <div key={item.id} className="flex justify-between text-sm py-2 border-b border-border/50 last:border-0">
-                    <div>
-                      <p className="font-medium">{item.description}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                {quote.items.map(item => {
+                  const mats = (item as any).materials || [];
+                  const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+                  return (
+                    <div key={item.id} className="py-2 border-b border-border/50 last:border-0">
+                      <div className="flex justify-between text-sm">
+                        <div>
+                          <p className="font-medium">{item.description}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                        </div>
+                        <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice + matsTotal)}</span>
+                      </div>
+                      {mats.length > 0 && (
+                        <div className="mt-1 ml-3 space-y-0.5">
+                          {mats.map((m: any) => (
+                            <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
+                              <span>{m.quantity} × {m.name}</span>
+                              <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="border-t mt-3 pt-3 space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
