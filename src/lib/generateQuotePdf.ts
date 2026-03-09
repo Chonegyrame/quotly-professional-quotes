@@ -234,23 +234,42 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   doc.setTextColor(...muted);
   doc.text(`${data.company.name} — Genererad med Quotly`, pageWidth / 2, footerY, { align: 'center' });
 
-  // Open in new tab (works better in iframes and on mobile)
+  // Force download approach (works better in all browsers)
   try {
     const pdfBlob = doc.output('blob');
     console.log('📄 PDF blob created, size:', pdfBlob.size);
+    
+    // Clean filename - only alphanumeric and safe chars
+    const cleanCustomer = data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9\s]/g, '').replace(/\s+/g, '_');
+    const cleanQuoteNumber = data.quoteNumber.replace(/[^a-zA-Z0-9]/g, '');
+    const filename = `Offert_${cleanQuoteNumber}_${cleanCustomer}.pdf`;
+    console.log('📄 Generated filename:', filename);
+    
+    // Create download link
     const blobUrl = URL.createObjectURL(pdfBlob);
-    console.log('📄 Opening URL:', blobUrl);
-    const opened = window.open(blobUrl, '_blank');
-    if (!opened) {
-      console.warn('📄 Popup blocked! Falling back to download link');
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${data.quoteNumber}_${data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9]/g, '_')}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    
+    // Add to DOM, click, and remove
+    document.body.appendChild(link);
+    console.log('📄 Triggering download...');
+    link.click();
+    document.body.removeChild(link);
+    
+    // Also try to open in new tab as backup
+    setTimeout(() => {
+      const newTab = window.open(blobUrl, '_blank');
+      if (newTab) {
+        console.log('📄 Also opened in new tab');
+      } else {
+        console.log('📄 New tab blocked, download should work');
+      }
+    }, 100);
+    
+    // Clean up blob URL after 10 seconds
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
   } catch (err) {
     console.error('📄 PDF generation error:', err);
     throw err;
