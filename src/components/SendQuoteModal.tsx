@@ -28,6 +28,26 @@ function detectMethod(value: string): 'email' | 'phone' | null {
   return null;
 }
 
+function getErrorMessage(err: unknown): string {
+  if (!err) return 'Kunde inte skicka offerten';
+
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const msg = String((err as { message?: unknown }).message ?? '');
+
+    try {
+      const parsed = JSON.parse(msg);
+      if (typeof parsed?.error === 'string') return parsed.error;
+      if (typeof parsed?.message === 'string') return parsed.message;
+    } catch {
+      // Keep original message if not JSON
+    }
+
+    return msg || 'Kunde inte skicka offerten';
+  }
+
+  return String(err);
+}
+
 export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil }: SendQuoteModalProps) {
   const [recipient, setRecipient] = useState(customerEmail);
   const [sending, setSending] = useState(false);
@@ -52,14 +72,19 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
         },
       });
 
-      if (fnError) throw fnError;
-      if (data?.error) throw new Error(data.error);
+      if (fnError) {
+        throw new Error(getErrorMessage(fnError));
+      }
+
+      if (data?.error) {
+        throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+      }
 
       toast.success('Offerten har skickats!');
       onOpenChange(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Send error:', err);
-      toast.error(err.message || 'Kunde inte skicka offerten');
+      toast.error(getErrorMessage(err));
     } finally {
       setSending(false);
     }
@@ -74,7 +99,7 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
             Skicka offert {quoteNumber}
           </DialogTitle>
           <DialogDescription>
-            Ange kundens e-postadress eller telefonnummer fÃ¶r att skicka offerten.
+            Ange kundens e-postadress eller telefonnummer för att skicka offerten.
           </DialogDescription>
         </DialogHeader>
 
