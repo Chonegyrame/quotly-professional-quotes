@@ -17,6 +17,7 @@ import { useMaterials } from '@/hooks/useMaterials';
 import { useTemplates } from '@/hooks/useTemplates';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { SendQuoteModal } from '@/components/SendQuoteModal';
 
 const steps = ['Customer', 'Line Items', 'Preview'];
 
@@ -39,6 +40,8 @@ export default function QuoteBuilder() {
   const { templates } = useTemplates();
   const [currentStep, setCurrentStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -204,8 +207,14 @@ export default function QuoteBuilder() {
         }
       }
 
-      toast.success(isEditMode ? 'Quote updated!' : (status === 'sent' ? 'Quote sent!' : 'Quote saved as draft'));
-      navigate(isEditMode ? `/quotes/${editId}` : '/');
+      if (status === 'sent') {
+        setSavedQuoteId(quoteId);
+        setSendModalOpen(true);
+        toast.success(isEditMode ? 'Offert uppdaterad!' : 'Offert skickad!');
+      } else {
+        toast.success('Offert sparad som utkast');
+        navigate(isEditMode ? `/quotes/${editId}` : '/');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to save quote');
     }
@@ -372,6 +381,18 @@ export default function QuoteBuilder() {
           </div>
         </div>
       )}
+      <SendQuoteModal
+        open={sendModalOpen}
+        onOpenChange={(open) => {
+          setSendModalOpen(open);
+          if (!open) navigate(savedQuoteId ? `/quotes/${savedQuoteId}` : '/');
+        }}
+        customerEmail={customerEmail}
+        quoteNumber=""
+        quoteId={savedQuoteId || ''}
+        total={formatCurrency(total)}
+        validUntil={validUntil.toLocaleDateString('sv-SE')}
+      />
     </div>
   );
 }

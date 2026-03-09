@@ -1,5 +1,6 @@
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download } from 'lucide-react';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,14 +9,15 @@ import { TimelineEvent } from '@/components/TimelineEvent';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
-import { useMemo } from 'react';
 import { useCompany } from '@/hooks/useCompany';
+import { SendQuoteModal } from '@/components/SendQuoteModal';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes: dbQuotes } = useQuotes();
+  const { quotes: dbQuotes, updateQuoteStatus } = useQuotes();
   const { company } = useCompany();
+  const [sendModalOpen, setSendModalOpen] = useState(false);
 
   const quote = useMemo(() => {
     const dbQ = dbQuotes.find((q: any) => q.id === id);
@@ -111,6 +113,14 @@ export default function QuoteDetail() {
       )}
 
       <div className="flex gap-2 mb-4 overflow-x-auto no-print">
+        {quote.status === 'draft' && (
+          <Button size="sm" className="gap-1.5 shrink-0" onClick={async () => {
+            await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
+            setSendModalOpen(true);
+          }}>
+            <Send className="h-3.5 w-3.5" /> Skicka
+          </Button>
+        )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Copy Link
         </Button>
@@ -273,6 +283,16 @@ export default function QuoteDetail() {
           ))}
         </CardContent>
       </Card>
+
+      <SendQuoteModal
+        open={sendModalOpen}
+        onOpenChange={setSendModalOpen}
+        customerEmail={quote.customerEmail}
+        quoteNumber={quote.quoteNumber}
+        quoteId={quote.id}
+        total={formatCurrency(total)}
+        validUntil={quote.validUntil ? formatDate(quote.validUntil) : ''}
+      />
     </div>
   );
 }
