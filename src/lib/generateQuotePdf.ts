@@ -234,10 +234,15 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   doc.setTextColor(...muted);
   doc.text(`${data.company.name} — Genererad med Quotly`, pageWidth / 2, footerY, { align: 'center' });
 
-  // Force download approach (works better in all browsers)
+  // Force download with better error handling
   try {
+    console.log('📄 Creating PDF blob...');
     const pdfBlob = doc.output('blob');
     console.log('📄 PDF blob created, size:', pdfBlob.size);
+    
+    if (pdfBlob.size === 0) {
+      throw new Error('PDF blob is empty');
+    }
     
     // Clean filename - only alphanumeric and safe chars
     const cleanCustomer = data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9\s]/g, '').replace(/\s+/g, '_');
@@ -245,33 +250,36 @@ export async function generateQuotePdf(data: PdfQuoteData) {
     const filename = `Offert_${cleanQuoteNumber}_${cleanCustomer}.pdf`;
     console.log('📄 Generated filename:', filename);
     
-    // Create download link
+    // Method 1: Try direct download
     const blobUrl = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');
     link.href = blobUrl;
     link.download = filename;
     link.style.display = 'none';
     
-    // Add to DOM, click, and remove
     document.body.appendChild(link);
-    console.log('📄 Triggering download...');
+    console.log('📄 Clicking download link...');
     link.click();
     document.body.removeChild(link);
     
-    // Also try to open in new tab as backup
-    setTimeout(() => {
-      const newTab = window.open(blobUrl, '_blank');
-      if (newTab) {
-        console.log('📄 Also opened in new tab');
-      } else {
-        console.log('📄 New tab blocked, download should work');
-      }
-    }, 100);
+    // Method 2: Also use jsPDF's built-in save
+    console.log('📄 Also trying jsPDF save...');
+    doc.save(filename);
     
-    // Clean up blob URL after 10 seconds
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    // Clean up
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    
+    console.log('📄 PDF download methods completed');
   } catch (err) {
     console.error('📄 PDF generation error:', err);
-    throw err;
+    
+    // Last resort: try jsPDF save directly
+    try {
+      console.log('📄 Fallback: trying direct jsPDF save');
+      doc.save(`quote_${Date.now()}.pdf`);
+    } catch (saveErr) {
+      console.error('📄 Even fallback failed:', saveErr);
+      throw new Error(`PDF generation failed: ${err.message}`);
+    }
   }
 }
