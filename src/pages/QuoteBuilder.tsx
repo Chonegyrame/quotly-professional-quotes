@@ -381,6 +381,18 @@ export default function QuoteBuilder() {
           </div>
         </div>
       )}
+      <SendQuoteModal
+        open={sendModalOpen}
+        onOpenChange={(open) => {
+          setSendModalOpen(open);
+          if (!open) navigate(savedQuoteId ? `/quotes/${savedQuoteId}` : '/');
+        }}
+        customerEmail={customerEmail}
+        quoteNumber=""
+        quoteId={savedQuoteId || ''}
+        total={formatCurrency(total)}
+        validUntil={validUntil.toLocaleDateString('sv-SE')}
+      />
     </div>
   );
 }
