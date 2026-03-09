@@ -40,6 +40,8 @@ export default function QuoteBuilder() {
   const { templates } = useTemplates();
   const [currentStep, setCurrentStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
