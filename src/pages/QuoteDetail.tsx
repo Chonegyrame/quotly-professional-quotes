@@ -15,8 +15,9 @@ import { SendQuoteModal } from '@/components/SendQuoteModal';
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes: dbQuotes } = useQuotes();
+  const { quotes: dbQuotes, updateQuoteStatus } = useQuotes();
   const { company } = useCompany();
+  const [sendModalOpen, setSendModalOpen] = useState(false);
 
   const quote = useMemo(() => {
     const dbQ = dbQuotes.find((q: any) => q.id === id);
