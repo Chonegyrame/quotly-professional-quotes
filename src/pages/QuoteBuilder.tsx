@@ -207,8 +207,14 @@ export default function QuoteBuilder() {
         }
       }
 
-      toast.success(isEditMode ? 'Quote updated!' : (status === 'sent' ? 'Quote sent!' : 'Quote saved as draft'));
-      navigate(isEditMode ? `/quotes/${editId}` : '/');
+      if (status === 'sent') {
+        setSavedQuoteId(quoteId);
+        setSendModalOpen(true);
+        toast.success(isEditMode ? 'Offert uppdaterad!' : 'Offert skickad!');
+      } else {
+        toast.success('Offert sparad som utkast');
+        navigate(isEditMode ? `/quotes/${editId}` : '/');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to save quote');
     }
