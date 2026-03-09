@@ -283,6 +283,16 @@ export default function QuoteDetail() {
           ))}
         </CardContent>
       </Card>
+
+      <SendQuoteModal
+        open={sendModalOpen}
+        onOpenChange={setSendModalOpen}
+        customerEmail={quote.customerEmail}
+        quoteNumber={quote.quoteNumber}
+        quoteId={quote.id}
+        total={formatCurrency(total)}
+        validUntil={quote.validUntil ? formatDate(quote.validUntil) : ''}
+      />
     </div>
   );
 }
