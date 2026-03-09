@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Copy, Check, Mail, ExternalLink } from 'lucide-react';
+import { Mail, Phone, Send, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SendQuoteModalProps {
   open: boolean;
@@ -16,15 +17,52 @@ interface SendQuoteModalProps {
   validUntil: string;
 }
 
-export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil }: SendQuoteModalProps) {
-  const [copied, setCopied] = useState(false);
-  const publicLink = `${window.location.origin}/q/${quoteId}`;
+function detectMethod(value: string): 'email' | 'phone' | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  // Email pattern
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'email';
+  // Swedish phone: starts with 0 or +46, digits/spaces/dashes, 7+ digits
+  const digits = trimmed.replace(/[\s\-\(\)]/g, '');
+  if (/^(\+46|0)\d{7,}$/.test(digits)) return 'phone';
+  return null;
+}
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(publicLink);
-    setCopied(true);
-    toast.success('Länk kopierad!');
-    setTimeout(() => setCopied(false), 2000);
+export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil }: SendQuoteModalProps) {
+  const [recipient, setRecipient] = useState(customerEmail);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  const method = detectMethod(recipient);
+
+  const handleSend = async () => {
+    if (!method) {
+      setError('Ange en giltig e-postadress eller telefonnummer (t.ex. 070-123 45 67)');
+      return;
+    }
+    setError('');
+    setSending(true);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('send-quote', {
+        body: {
+          quoteId,
+          recipient: recipient.trim(),
+          method: method === 'phone' ? 'sms' : 'email',
+        },
+      });
+
+      if (fnError) throw fnError;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success('Offerten har skickats!');
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Send error:', err);
+      toast.error(err.message || 'Kunde inte skicka offerten');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -32,28 +70,47 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-primary" />
+            <Send className="h-5 w-5 text-primary" />
             Skicka offert {quoteNumber}
           </DialogTitle>
           <DialogDescription>
-            Kopiera länken nedan och skicka den till kunden via e-post eller SMS.
+            Ange kundens e-postadress eller telefonnummer för att skicka offerten.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
           <div>
-            <Label className="text-muted-foreground text-xs">Kundens e-post</Label>
-            <Input value={customerEmail} readOnly className="mt-1 bg-muted/50" />
-          </div>
-
-          <div>
-            <Label className="text-muted-foreground text-xs">Offertlänk</Label>
-            <div className="flex gap-2 mt-1">
-              <Input value={publicLink} readOnly className="bg-muted/50 text-sm" />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={copyLink}>
-                {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-              </Button>
+            <Label htmlFor="send-recipient" className="text-muted-foreground text-xs">
+              E-post eller telefonnummer
+            </Label>
+            <div className="relative mt-1">
+              <Input
+                id="send-recipient"
+                type="text"
+                placeholder="anna@example.com eller 070-123 45 67"
+                value={recipient}
+                onChange={(e) => {
+                  setRecipient(e.target.value);
+                  setError('');
+                }}
+                autoFocus
+              />
+              {method && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {method === 'email' ? (
+                    <Mail className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Phone className="h-4 w-4 text-primary" />
+                  )}
+                </div>
+              )}
             </div>
+            {error && <p className="text-destructive text-xs mt-1">{error}</p>}
+            {method && (
+              <p className="text-muted-foreground text-xs mt-1">
+                {method === 'email' ? 'Skickas via e-post' : 'Skickas via SMS'}
+              </p>
+            )}
           </div>
 
           <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm">
@@ -67,17 +124,18 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
             </div>
           </div>
 
-          <div className="flex gap-2 pt-2">
-            <Button className="flex-1 gap-2" onClick={copyLink}>
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'Kopierad!' : 'Kopiera länk'}
-            </Button>
-            <a href={publicLink} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="icon">
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </a>
-          </div>
+          <Button
+            className="w-full gap-2"
+            onClick={handleSend}
+            disabled={sending || !recipient.trim()}
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            {sending ? 'Skickar...' : 'Skicka'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
