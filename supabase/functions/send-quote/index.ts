@@ -3,74 +3,60 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-type SendQuotePayload = {
-  quoteId?: string;
-  recipient?: string;
-  method?: "email" | "sms" | string;
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Method not allowed. Use POST." }), {
-        status: 405,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Method not allowed. Use POST." }),
+        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      return new Response(JSON.stringify({ error: "Missing RESEND_API_KEY" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return new Response(JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { quoteId, recipient, method }: SendQuotePayload = await req.json();
+    const { quoteId, recipient, method } = await req.json();
 
     if (!quoteId || !recipient || !method) {
       return new Response(
-        JSON.stringify({ error: "Invalid payload. Required: quoteId, recipient, method." }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        JSON.stringify({ error: "Saknar obligatoriska fält: quoteId, recipient, method." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (method === "sms") {
+      return new Response(
+        JSON.stringify({ error: "SMS är inte konfigurerat ännu. Använd e-post istället." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     if (method !== "email") {
       return new Response(
-        JSON.stringify({ error: "SMS not configured yet. Use an email address for now." }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        JSON.stringify({ error: `Okänd metod: "${method}". Använd "email" eller "sms".` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY saknas i serverinställningarna." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Build Supabase client with caller's auth
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const authHeader = req.headers.get("Authorization") ?? "";
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+      global: { headers: { Authorization: authHeader } },
     });
 
     const { data: quote, error: quoteError } = await supabase
@@ -81,39 +67,25 @@ serve(async (req: Request) => {
 
     if (quoteError || !quote) {
       return new Response(
-        JSON.stringify({
-          error: "Could not load quote for email",
-          details: quoteError?.message ?? "Quote not found",
-        }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        JSON.stringify({ error: "Kunde inte hitta offerten.", details: quoteError?.message }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const siteUrl = Deno.env.get("SITE_URL") ?? "";
-    const publicQuoteUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/q/${quote.id}` : `/q/${quote.id}`;
+    const publicQuoteUrl = siteUrl
+      ? `${siteUrl.replace(/\/$/, "")}/q/${quote.id}`
+      : `/q/${quote.id}`;
 
-    const subject = `Quote ${quote.quote_number} is ready`;
-    const text = [
-      `Hi ${quote.customer_name || "there"},`,
-      "",
-      `Your quote ${quote.quote_number} is ready.`,
-      quote.valid_until ? `Valid until: ${quote.valid_until}` : "",
-      `Open quote: ${publicQuoteUrl}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
+    const subject = `Offert ${quote.quote_number} är klar`;
     const html = `
-      <p>Hi ${quote.customer_name || "there"},</p>
-      <p>Your quote <strong>${quote.quote_number}</strong> is ready.</p>
-      ${quote.valid_until ? `<p><strong>Valid until:</strong> ${quote.valid_until}</p>` : ""}
-      <p><a href="${publicQuoteUrl}">Open your quote</a></p>
+      <p>Hej ${quote.customer_name || ""},</p>
+      <p>Din offert <strong>${quote.quote_number}</strong> är klar.</p>
+      ${quote.valid_until ? `<p><strong>Giltig till:</strong> ${quote.valid_until}</p>` : ""}
+      <p><a href="${publicQuoteUrl}">Öppna offerten</a></p>
     `;
 
-    const resendResponse = await fetch("https://api.resend.com/emails", {
+    const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resendApiKey}`,
@@ -123,55 +95,36 @@ serve(async (req: Request) => {
         from: "onboarding@resend.dev",
         to: recipient,
         subject,
-        text,
         html,
       }),
     });
 
-    const resendRaw = await resendResponse.text();
+    const resendRaw = await resendRes.text();
     let resendBody: unknown = resendRaw;
-    try {
-      resendBody = JSON.parse(resendRaw);
-    } catch {
-      // Keep raw body if not JSON
-    }
+    try { resendBody = JSON.parse(resendRaw); } catch { /* keep raw */ }
 
-    if (!resendResponse.ok) {
+    if (!resendRes.ok) {
+      console.error("Resend error body:", resendBody);
       return new Response(
         JSON.stringify({
-          error: "Resend request failed",
-          status: resendResponse.status,
-          statusText: resendResponse.statusText,
+          error: "E-post kunde inte skickas via Resend.",
+          status: resendRes.status,
           resend: resendBody,
         }),
-        {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
       JSON.stringify({ success: true, resend: resendBody }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
-
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("send-quote unexpected error:", message);
     return new Response(
-      JSON.stringify({
-        error: "Unexpected error while sending quote",
-        message,
-        stack,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      JSON.stringify({ error: "Oväntat serverfel.", message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
