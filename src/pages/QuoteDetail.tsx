@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,9 +8,8 @@ import { TimelineEvent } from '@/components/TimelineEvent';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useCompany } from '@/hooks/useCompany';
-import { generateQuotePdf } from '@/lib/generateQuotePdf';
 
 export default function QuoteDetail() {
   const { id } = useParams();
@@ -18,7 +17,6 @@ export default function QuoteDetail() {
   const { quotes: dbQuotes } = useQuotes();
   const { company } = useCompany();
 
-  // Map DB quote or fall back to mock
   const quote = useMemo(() => {
     const dbQ = dbQuotes.find((q: any) => q.id === id);
     if (dbQ) {
@@ -74,36 +72,14 @@ export default function QuoteDetail() {
     toast.success('Link copied!');
   };
 
-  const handleDownloadPdf = () => {
-    if (!company) {
-      toast.error('Company info not loaded');
-      return;
-    }
-    
-    try {
-      generateQuotePdf({
-        quoteNumber: quote.quoteNumber,
-        customerName: quote.customerName,
-        customerEmail: quote.customerEmail,
-        items: quote.items.map((item: any) => ({
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-        })),
-        company: {
-          name: company.name,
-        },
-      });
-      toast.success('Offert nedladdad som textfil!');
-    } catch (error) {
-      console.error('Failed to generate quote file:', error);
-      toast.error('Failed to generate quote file');
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
-      <div className="flex items-center gap-3 mb-4">
+      {/* Action bar — hidden when printing */}
+      <div className="flex items-center gap-3 mb-4 no-print">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -115,14 +91,14 @@ export default function QuoteDetail() {
       </div>
 
       {reminderDue && (
-        <Card className="mb-4 border-warning/50 bg-warning/5">
+        <Card className="mb-4 border-warning/50 bg-warning/5 no-print">
           <CardContent className="p-4 flex items-center gap-3">
             <span className="text-warning text-sm font-medium">⚠️ No response after 48h — consider following up</span>
           </CardContent>
         </Card>
       )}
 
-      <div className="flex gap-2 mb-4 overflow-x-auto">
+      <div className="flex gap-2 mb-4 overflow-x-auto no-print">
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Copy Link
         </Button>
@@ -141,12 +117,38 @@ export default function QuoteDetail() {
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
         )}
-        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDownloadPdf}>
-          <Download className="h-3.5 w-3.5" /> Textfil
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handlePrint}>
+          <Download className="h-3.5 w-3.5" /> PDF
         </Button>
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (coming soon)')}>
           <CopyPlus className="h-3.5 w-3.5" /> Duplicate
         </Button>
+      </div>
+
+      {/* Print header — only visible when printing */}
+      <div className="hidden print-only mb-6">
+        {company && (
+          <div className="mb-4 pb-4 border-b-2 border-foreground">
+            <h2 className="text-2xl font-heading font-bold">{company.name}</h2>
+            <div className="text-sm text-muted-foreground flex flex-wrap gap-x-3">
+              {company.org_number && <span>Org.nr: {company.org_number}</span>}
+              {company.address && <span>{company.address}</span>}
+              {company.phone && <span>{company.phone}</span>}
+              {company.email && <span>{company.email}</span>}
+              {company.bankgiro && <span>Bankgiro: {company.bankgiro}</span>}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-heading font-bold">OFFERT</h1>
+            <p className="text-lg mt-1">{quote.quoteNumber}</p>
+          </div>
+          <div className="text-right text-sm">
+            <p>Datum: {formatDate(quote.createdAt)}</p>
+            {quote.validUntil && <p>Giltig till: {formatDate(quote.validUntil)}</p>}
+          </div>
+        </div>
       </div>
 
       <Card className="mb-4">
@@ -161,8 +163,9 @@ export default function QuoteDetail() {
 
       <Card className="mb-4">
         <CardContent className="p-4">
+          {/* In print mode, always show expanded content */}
           <Collapsible defaultOpen={false}>
-            <CollapsibleTrigger className="flex items-center justify-between w-full group">
+            <CollapsibleTrigger className="flex items-center justify-between w-full group no-print">
               <h3 className="font-semibold text-sm">Line Items ({quote.items.length})</h3>
               <div className="flex items-center gap-2">
                 <span className="font-heading font-bold text-lg">{formatCurrency(total)}</span>
@@ -204,15 +207,53 @@ export default function QuoteDetail() {
               </div>
             </CollapsibleContent>
           </Collapsible>
+
+          {/* Print-only: always-visible line items */}
+          <div className="hidden print-only">
+            <h3 className="font-semibold text-sm mb-3">Line Items ({quote.items.length})</h3>
+            <div className="space-y-3">
+              {quote.items.map(item => {
+                const mats = (item as any).materials || [];
+                const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+                return (
+                  <div key={item.id} className="py-2 border-b border-border/50 last:border-0">
+                    <div className="flex justify-between text-sm">
+                      <div>
+                        <p className="font-medium">{item.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                      </div>
+                      <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice + matsTotal)}</span>
+                    </div>
+                    {mats.length > 0 && (
+                      <div className="mt-1 ml-3 space-y-0.5">
+                        {mats.map((m: any) => (
+                          <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
+                            <span>{m.quantity} × {m.name}</span>
+                            <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="border-t mt-3 pt-3 space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Moms (25%)</span><span>{formatCurrency(vat)}</span></div>
+              <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Totalt</span><span>{formatCurrency(total)}</span></div>
+            </div>
+          </div>
+
           {(quote as any).estimatedTime && (
             <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimatedTime}</p>
           )}
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
-          {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground">Valid until: {formatDate(quote.validUntil)}</p>}
+          {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground no-print">Valid until: {formatDate(quote.validUntil)}</p>}
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="no-print">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-3 text-sm">Timeline</h3>
           {quote.events.map((event, idx) => (
