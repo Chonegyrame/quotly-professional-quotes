@@ -113,6 +113,14 @@ export default function QuoteDetail() {
       )}
 
       <div className="flex gap-2 mb-4 overflow-x-auto no-print">
+        {quote.status === 'draft' && (
+          <Button size="sm" className="gap-1.5 shrink-0" onClick={async () => {
+            await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
+            setSendModalOpen(true);
+          }}>
+            <Send className="h-3.5 w-3.5" /> Skicka
+          </Button>
+        )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Copy Link
         </Button>
