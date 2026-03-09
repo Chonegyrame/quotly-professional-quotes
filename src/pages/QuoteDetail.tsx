@@ -75,44 +75,51 @@ export default function QuoteDetail() {
   };
 
   const handleDownloadPdf = () => {
+    console.log('📄 Starting PDF generation with data:', { quote, company });
     if (!company) {
       toast.error('Company info not loaded');
       return;
     }
-    generateQuotePdf({
-      quoteNumber: quote.quoteNumber,
-      customerName: quote.customerName,
-      customerEmail: quote.customerEmail,
-      customerPhone: quote.customerPhone,
-      customerAddress: quote.customerAddress,
-      validUntil: quote.validUntil,
-      createdAt: quote.createdAt,
-      estimatedTime: (quote as any).estimatedTime,
-      notes: quote.notes,
-      items: quote.items.map((item: any) => ({
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        vatRate: item.vatRate,
-        materials: (item.materials || []).map((m: any) => ({
-          name: m.name,
-          quantity: m.quantity,
-          unitPrice: m.unitPrice,
-          unit: m.unit || 'st',
+    try {
+      generateQuotePdf({
+        quoteNumber: quote.quoteNumber,
+        customerName: quote.customerName,
+        customerEmail: quote.customerEmail,
+        customerPhone: quote.customerPhone,
+        customerAddress: quote.customerAddress,
+        validUntil: quote.validUntil,
+        createdAt: quote.createdAt,
+        estimatedTime: (quote as any).estimatedTime,
+        notes: quote.notes,
+        items: quote.items.map((item: any) => ({
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          vatRate: item.vatRate,
+          materials: (item.materials || []).map((m: any) => ({
+            name: m.name,
+            quantity: m.quantity,
+            unitPrice: m.unitPrice,
+            unit: m.unit || 'st',
+          })),
         })),
-      })),
-      company: {
-        name: company.name,
-        orgNumber: company.org_number,
-        address: company.address,
-        phone: company.phone,
-        email: company.email,
-        bankgiro: company.bankgiro,
-        logoUrl: company.logo_url,
-      },
-      defaultVat: company.default_vat,
-    });
-    toast.success('PDF downloaded!');
+        company: {
+          name: company.name,
+          orgNumber: company.org_number,
+          address: company.address,
+          phone: company.phone,
+          email: company.email,
+          bankgiro: company.bankgiro,
+          logoUrl: company.logo_url,
+        },
+        defaultVat: company.default_vat,
+      });
+      console.log('📄 PDF generation completed');
+      toast.success('PDF downloaded!');
+    } catch (error) {
+      console.error('📄 PDF generation failed:', error);
+      toast.error('Failed to generate PDF: ' + (error as Error).message);
+    }
   };
 
   return (
