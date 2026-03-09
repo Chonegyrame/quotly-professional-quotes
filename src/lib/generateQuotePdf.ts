@@ -234,52 +234,27 @@ export async function generateQuotePdf(data: PdfQuoteData) {
   doc.setTextColor(...muted);
   doc.text(`${data.company.name} — Genererad med Quotly`, pageWidth / 2, footerY, { align: 'center' });
 
-  // Force download with better error handling
-  try {
-    console.log('📄 Creating PDF blob...');
-    const pdfBlob = doc.output('blob');
-    console.log('📄 PDF blob created, size:', pdfBlob.size);
-    
-    if (pdfBlob.size === 0) {
-      throw new Error('PDF blob is empty');
-    }
-    
-    // Clean filename - only alphanumeric and safe chars
-    const cleanCustomer = data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9\s]/g, '').replace(/\s+/g, '_');
-    const cleanQuoteNumber = data.quoteNumber.replace(/[^a-zA-Z0-9]/g, '');
-    const filename = `Offert_${cleanQuoteNumber}_${cleanCustomer}.pdf`;
-    console.log('📄 Generated filename:', filename);
-    
-    // Method 1: Try direct download
-    const blobUrl = URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    console.log('📄 Clicking download link...');
-    link.click();
-    document.body.removeChild(link);
-    
-    // Method 2: Also use jsPDF's built-in save
-    console.log('📄 Also trying jsPDF save...');
-    doc.save(filename);
-    
-    // Clean up
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    
-    console.log('📄 PDF download methods completed');
-  } catch (err) {
-    console.error('📄 PDF generation error:', err);
-    
-    // Last resort: try jsPDF save directly
-    try {
-      console.log('📄 Fallback: trying direct jsPDF save');
-      doc.save(`quote_${Date.now()}.pdf`);
-    } catch (saveErr) {
-      console.error('📄 Even fallback failed:', saveErr);
-      throw new Error(`PDF generation failed: ${err.message}`);
-    }
-  }
+  // Clean filename
+  const cleanCustomer = data.customerName.replace(/[^a-zA-ZåäöÅÄÖ0-9\s]/g, '').replace(/\s+/g, '_');
+  const cleanQuoteNumber = data.quoteNumber.replace(/[^a-zA-Z0-9]/g, '');
+  const filename = `Offert_${cleanQuoteNumber}_${cleanCustomer}.pdf`;
+
+  // Open in new tab (works in iframes too) AND trigger download
+  const pdfBlob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(pdfBlob);
+
+  // Try download link first
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // Also open in new tab as fallback (always works)
+  window.open(blobUrl, '_blank');
+
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
 }
