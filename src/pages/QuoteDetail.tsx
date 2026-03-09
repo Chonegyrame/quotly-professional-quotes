@@ -1,5 +1,6 @@
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download } from 'lucide-react';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,8 +9,8 @@ import { TimelineEvent } from '@/components/TimelineEvent';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
-import { useMemo } from 'react';
 import { useCompany } from '@/hooks/useCompany';
+import { SendQuoteModal } from '@/components/SendQuoteModal';
 
 export default function QuoteDetail() {
   const { id } = useParams();
