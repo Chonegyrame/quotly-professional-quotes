@@ -59,9 +59,21 @@ export default function QuoteDetail() {
     );
   }
 
-  const subtotal = getQuoteSubtotal(quote.items);
-  const vat = getQuoteVat(quote.items);
-  const total = getQuoteTotal(quote.items);
+  // Calculate totals including materials
+  const subtotal = quote.items.reduce((sum, item) => {
+    const mats = (item as any).materials || [];
+    const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+    return sum + (item.quantity * item.unitPrice) + matsTotal;
+  }, 0);
+  
+  const vat = quote.items.reduce((sum, item) => {
+    const mats = (item as any).materials || [];
+    const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+    const itemTotal = (item.quantity * item.unitPrice) + matsTotal;
+    return sum + (itemTotal * (item.vatRate / 100));
+  }, 0);
+  
+  const total = subtotal + vat;
   const isLocked = ['declined', 'expired'].includes(quote.status);
   const canEdit = !isLocked;
   const reminderDue = isReminderDue(quote);
