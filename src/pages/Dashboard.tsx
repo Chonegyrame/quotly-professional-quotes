@@ -42,12 +42,19 @@ export default function Dashboard() {
       openedAt: q.opened_at,
       acceptedAt: q.accepted_at,
       companyId: q.company_id,
-      items: (q.quote_items || []).map((i: any) => ({
+            items: (q.quote_items || []).map((i: any) => ({
         id: i.id,
         description: i.description,
         quantity: i.quantity,
         unitPrice: i.unit_price,
         vatRate: i.vat_rate,
+        materials: (i.quote_item_materials || []).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          quantity: m.quantity,
+          unitPrice: m.unit_price,
+          unit: m.unit || 'st',
+        })),
       })),
       events: (q.quote_events || []).map((e: any) => ({
         id: e.id,
@@ -167,3 +174,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

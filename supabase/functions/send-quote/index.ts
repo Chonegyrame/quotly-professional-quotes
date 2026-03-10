@@ -25,7 +25,9 @@ serve(async (req: Request) => {
       });
     }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const resendApiKeyRaw = Deno.env.get("RESEND_API_KEY") ?? "";
+    const resendApiKey = resendApiKeyRaw.trim().replace(/^['"]|['"]$/g, "");
+
     if (!resendApiKey) {
       return new Response(JSON.stringify({ error: "Missing RESEND_API_KEY" }), {
         status: 500,
@@ -35,6 +37,7 @@ serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
     if (!supabaseUrl || !supabaseAnonKey) {
       return new Response(JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY" }), {
         status: 500,
@@ -45,32 +48,22 @@ serve(async (req: Request) => {
     const { quoteId, recipient, method }: SendQuotePayload = await req.json();
 
     if (!quoteId || !recipient || !method) {
-      return new Response(
-        JSON.stringify({ error: "Invalid payload. Required: quoteId, recipient, method." }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ error: "Invalid payload. Required: quoteId, recipient, method." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (method !== "email") {
-      return new Response(
-        JSON.stringify({ error: "SMS not configured yet. Use an email address for now." }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ error: "SMS är inte konfigurerat ännu." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+      global: { headers: { Authorization: authHeader } },
     });
 
     const { data: quote, error: quoteError } = await supabase
@@ -130,48 +123,47 @@ serve(async (req: Request) => {
 
     const resendRaw = await resendResponse.text();
     let resendBody: unknown = resendRaw;
+
     try {
       resendBody = JSON.parse(resendRaw);
     } catch {
-      // Keep raw body if not JSON
+      // keep raw body if not JSON
     }
 
     if (!resendResponse.ok) {
+      const message =
+        typeof resendBody === "object" &&
+        resendBody !== null &&
+        "message" in resendBody
+          ? String((resendBody as { message?: unknown }).message ?? "Resend request failed")
+          : "Resend request failed";
+
       return new Response(
         JSON.stringify({
-          error: "Resend request failed",
+          error: message,
           status: resendResponse.status,
           statusText: resendResponse.statusText,
           resend: resendBody,
         }),
         {
-          status: 502,
+          status: resendResponse.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: true, resend: resendBody }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return new Response(JSON.stringify({ success: true, resend: resendBody }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
+    console.error("Unexpected error while sending quote", error);
 
-    return new Response(
-      JSON.stringify({
-        error: "Unexpected error while sending quote",
-        message,
-        stack,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    const message = error instanceof Error ? error.message : String(error);
+
+    return new Response(JSON.stringify({ error: "Unexpected error while sending quote", message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

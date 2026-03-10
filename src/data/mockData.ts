@@ -6,6 +6,13 @@ export interface QuoteItem {
   quantity: number;
   unitPrice: number;
   vatRate: number;
+  materials?: {
+    id: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    unit?: string;
+  }[];
 }
 
 export interface QuoteEvent {
@@ -268,11 +275,26 @@ export const mockQuotes: Quote[] = [
 ];
 
 export function getQuoteSubtotal(items: QuoteItem[]): number {
-  return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  return items.reduce((sum, item) => {
+    const materialsTotal = (item.materials ?? []).reduce(
+      (materialSum, material) => materialSum + material.quantity * material.unitPrice,
+      0,
+    );
+
+    return sum + item.quantity * item.unitPrice + materialsTotal;
+  }, 0);
 }
 
 export function getQuoteVat(items: QuoteItem[]): number {
-  return items.reduce((sum, item) => sum + item.quantity * item.unitPrice * (item.vatRate / 100), 0);
+  return items.reduce((sum, item) => {
+    const materialsTotal = (item.materials ?? []).reduce(
+      (materialSum, material) => materialSum + material.quantity * material.unitPrice,
+      0,
+    );
+    const lineTotal = item.quantity * item.unitPrice + materialsTotal;
+
+    return sum + lineTotal * (item.vatRate / 100);
+  }, 0);
 }
 
 export function getQuoteTotal(items: QuoteItem[]): number {
@@ -298,3 +320,4 @@ export function isReminderDue(quote: Quote): boolean {
   const hoursDiff = (now.getTime() - sentDate.getTime()) / (1000 * 60 * 60);
   return hoursDiff >= 48;
 }
+

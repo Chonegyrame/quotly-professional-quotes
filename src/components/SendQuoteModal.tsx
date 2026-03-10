@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Mail, Phone, Send, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ interface SendQuoteModalProps {
   quoteId: string;
   total: string;
   validUntil: string;
+  onSentSuccess?: () => Promise<void> | void;
 }
 
 function detectMethod(value: string): 'email' | 'phone' | null {
@@ -48,10 +49,15 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
-export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil }: SendQuoteModalProps) {
+export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil, onSentSuccess }: SendQuoteModalProps) {
   const [recipient, setRecipient] = useState(customerEmail);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setRecipient(customerEmail || '');
+    setError('');
+  }, [open, customerEmail]);
 
   const method = detectMethod(recipient);
 
@@ -78,6 +84,10 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
 
       if (data?.error) {
         throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+      }
+
+      if (onSentSuccess) {
+        await onSentSuccess();
       }
 
       toast.success('Offerten har skickats!');
@@ -166,3 +176,5 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
     </Dialog>
   );
 }
+
+

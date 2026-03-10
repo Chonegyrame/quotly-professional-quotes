@@ -34,7 +34,7 @@ export default function QuoteBuilder() {
   const { id: editId } = useParams();
   const isEditMode = !!editId;
   const existingQuote = useQuote(editId);
-  const { createQuote, updateQuote } = useQuotes();
+  const { createQuote, updateQuote, updateQuoteStatus } = useQuotes();
   const { company } = useCompany();
   const { materials: availableMaterials } = useMaterials();
   const { templates } = useTemplates();
@@ -138,7 +138,7 @@ export default function QuoteBuilder() {
 
   const handleSave = async (status: 'draft' | 'sent') => {
     // When editing a previously sent/opened quote, force status back to draft if saving as draft
-    const effectiveStatus = status;
+    const effectiveStatus = status === 'sent' ? 'draft' : status;
 
     try {
       const quoteItems = items.filter(i => i.description.trim()).map(i => ({
@@ -210,7 +210,6 @@ export default function QuoteBuilder() {
       if (status === 'sent') {
         setSavedQuoteId(quoteId);
         setSendModalOpen(true);
-        toast.success(isEditMode ? 'Offert uppdaterad!' : 'Offert skickad!');
       } else {
         toast.success('Offert sparad som utkast');
         navigate(isEditMode ? `/quotes/${editId}` : '/');
@@ -392,7 +391,13 @@ export default function QuoteBuilder() {
         quoteId={savedQuoteId || ''}
         total={formatCurrency(total)}
         validUntil={validUntil.toLocaleDateString('sv-SE')}
+        onSentSuccess={async () => {
+          if (!savedQuoteId) return;
+          await updateQuoteStatus.mutateAsync({ quoteId: savedQuoteId, status: 'sent' });
+        }}
       />
     </div>
   );
 }
+
+

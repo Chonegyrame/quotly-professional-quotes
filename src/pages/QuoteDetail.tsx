@@ -15,7 +15,7 @@ import { SendQuoteModal } from '@/components/SendQuoteModal';
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes: dbQuotes, updateQuoteStatus } = useQuotes();
+  const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote } = useQuotes();
   const { company } = useCompany();
   const [sendModalOpen, setSendModalOpen] = useState(false);
 
@@ -89,6 +89,15 @@ export default function QuoteDetail() {
   const handlePrint = () => {
     window.print();
   };
+  const handleDuplicate = async () => {
+    try {
+      const duplicatedQuote = await duplicateQuote.mutateAsync({ quoteId: quote.id });
+      toast.success('Offert kopierad');
+      navigate(`/quotes/${duplicatedQuote.id}/edit`);
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte kopiera offerten');
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -114,10 +123,7 @@ export default function QuoteDetail() {
 
       <div className="flex gap-2 mb-4 overflow-x-auto no-print">
         {quote.status === 'draft' && (
-          <Button size="sm" className="gap-1.5 shrink-0" onClick={async () => {
-            await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
-            setSendModalOpen(true);
-          }}>
+          <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setSendModalOpen(true)}>
             <Send className="h-3.5 w-3.5" /> Skicka
           </Button>
         )}
@@ -142,8 +148,8 @@ export default function QuoteDetail() {
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handlePrint}>
           <Download className="h-3.5 w-3.5" /> PDF
         </Button>
-        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => toast.info('Quote duplicated (coming soon)')}>
-          <CopyPlus className="h-3.5 w-3.5" /> Duplicate
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
+          <CopyPlus className="h-3.5 w-3.5" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicate'}
         </Button>
       </div>
 
@@ -292,7 +298,12 @@ export default function QuoteDetail() {
         quoteId={quote.id}
         total={formatCurrency(total)}
         validUntil={quote.validUntil ? formatDate(quote.validUntil) : ''}
+        onSentSuccess={async () => {
+          await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
+        }}
       />
     </div>
   );
 }
+
+
