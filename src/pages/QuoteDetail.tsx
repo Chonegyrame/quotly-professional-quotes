@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { TimelineEvent } from '@/components/TimelineEvent';
 import { useQuotes } from '@/hooks/useQuotes';
-import { mockQuotes, getQuoteSubtotal, getQuoteVat, getQuoteTotal, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
+import { mockQuotes, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
 import { useCompany } from '@/hooks/useCompany';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
@@ -39,42 +39,52 @@ export default function QuoteDetail() {
         acceptedAt: dbQ.accepted_at,
         companyId: dbQ.company_id,
         items: (dbQ.quote_items || []).map((i: any) => ({
-          id: i.id, description: i.description, quantity: i.quantity, unitPrice: i.unit_price, vatRate: i.vat_rate,
+          id: i.id,
+          description: i.description,
+          quantity: i.quantity,
+          unitPrice: i.unit_price,
+          vatRate: i.vat_rate,
           materials: (i.quote_item_materials || []).map((m: any) => ({
-            id: m.id, name: m.name, quantity: m.quantity, unitPrice: m.unit_price, unit: m.unit,
+            id: m.id,
+            name: m.name,
+            quantity: m.quantity,
+            unitPrice: m.unit_price,
+            unit: m.unit,
           })),
         })),
         events: (dbQ.quote_events || []).map((e: any) => ({
-          id: e.id, quoteId: e.quote_id, eventType: e.event_type, createdAt: e.created_at,
+          id: e.id,
+          quoteId: e.quote_id,
+          eventType: e.event_type,
+          createdAt: e.created_at,
         })),
       };
     }
-    return mockQuotes.find(q => q.id === id);
+    return mockQuotes.find((q) => q.id === id);
   }, [id, dbQuotes]);
 
   if (!quote) {
     return (
       <div className="p-6 text-center">
-        <p className="text-muted-foreground">Quote not found</p>
-        <Button variant="link" onClick={() => navigate('/')}>Back to dashboard</Button>
+        <p className="text-muted-foreground">Offerten hittades inte</p>
+        <Button variant="link" onClick={() => navigate('/')}>Till dashboard</Button>
       </div>
     );
   }
 
-  // Calculate totals including materials
   const subtotal = quote.items.reduce((sum, item) => {
     const mats = (item as any).materials || [];
     const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
-    return sum + (item.quantity * item.unitPrice) + matsTotal;
+    return sum + item.quantity * item.unitPrice + matsTotal;
   }, 0);
-  
+
   const vat = quote.items.reduce((sum, item) => {
     const mats = (item as any).materials || [];
     const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
-    const itemTotal = (item.quantity * item.unitPrice) + matsTotal;
-    return sum + (itemTotal * (item.vatRate / 100));
+    const itemTotal = item.quantity * item.unitPrice + matsTotal;
+    return sum + itemTotal * (item.vatRate / 100);
   }, 0);
-  
+
   const total = subtotal + vat;
   const isLocked = ['declined', 'expired'].includes(quote.status);
   const canEdit = !isLocked;
@@ -83,12 +93,13 @@ export default function QuoteDetail() {
 
   const copyLink = () => {
     navigator.clipboard.writeText(publicLink);
-    toast.success('Link copied!');
+    toast.success('Länk kopierad');
   };
 
   const handlePrint = () => {
     window.print();
   };
+
   const handleDuplicate = async () => {
     try {
       const duplicatedQuote = await duplicateQuote.mutateAsync({ quoteId: quote.id });
@@ -101,7 +112,6 @@ export default function QuoteDetail() {
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
-      {/* Action bar — hidden when printing */}
       <div className="flex items-center gap-3 mb-4 no-print">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
@@ -116,7 +126,7 @@ export default function QuoteDetail() {
       {reminderDue && (
         <Card className="mb-4 border-warning/50 bg-warning/5 no-print">
           <CardContent className="p-4 flex items-center gap-3">
-            <span className="text-warning text-sm font-medium">⚠️ No response after 48h — consider following up</span>
+            <span className="text-warning text-sm font-medium">Ingen respons efter 48h - överväg uppföljning</span>
           </CardContent>
         </Card>
       )}
@@ -128,32 +138,37 @@ export default function QuoteDetail() {
           </Button>
         )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
-          <Copy className="h-3.5 w-3.5" /> Copy Link
+          <Copy className="h-3.5 w-3.5" /> Kopiera länk
         </Button>
         <Link to={`/q/${quote.id}`} target="_blank">
           <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
-            <ExternalLink className="h-3.5 w-3.5" /> View as Customer
+            <ExternalLink className="h-3.5 w-3.5" /> Offert kundvy
           </Button>
         </Link>
         {canEdit && !isLocked && (
           <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
-            <Edit className="h-3.5 w-3.5" /> Edit
+            <Edit className="h-3.5 w-3.5" /> Redigera
           </Button>
         )}
         {isLocked && (
-          <Button variant="outline" size="sm" className="gap-1.5 shrink-0 opacity-50 cursor-not-allowed" disabled title={`Cannot edit ${quote.status} quotes`}>
-            <Edit className="h-3.5 w-3.5" /> Edit
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 shrink-0 opacity-50 cursor-not-allowed"
+            disabled
+            title={`Kan inte redigera ${quote.status} offerter`}
+          >
+            <Edit className="h-3.5 w-3.5" /> Redigera
           </Button>
         )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handlePrint}>
           <Download className="h-3.5 w-3.5" /> PDF
         </Button>
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
-          <CopyPlus className="h-3.5 w-3.5" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicate'}
+          <CopyPlus className="h-3.5 w-3.5" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicera'}
         </Button>
       </div>
 
-      {/* Print header — only visible when printing */}
       <div className="hidden print-only mb-6">
         {company && (
           <div className="mb-4 pb-4 border-b-2 border-foreground">
@@ -181,7 +196,7 @@ export default function QuoteDetail() {
 
       <Card className="mb-4">
         <CardContent className="p-4 space-y-1 text-sm">
-          <h3 className="font-semibold mb-2">Customer</h3>
+          <h3 className="font-semibold mb-2">Kund</h3>
           <p>{quote.customerName}</p>
           <p className="text-muted-foreground">{quote.customerEmail}</p>
           {quote.customerPhone && <p className="text-muted-foreground">{quote.customerPhone}</p>}
@@ -191,10 +206,9 @@ export default function QuoteDetail() {
 
       <Card className="mb-4">
         <CardContent className="p-4">
-          {/* In print mode, always show expanded content */}
           <Collapsible defaultOpen={false}>
             <CollapsibleTrigger className="flex items-center justify-between w-full group no-print">
-              <h3 className="font-semibold text-sm">Line Items ({quote.items.length})</h3>
+              <h3 className="font-semibold text-sm">Arbetsrader ({quote.items.length})</h3>
               <div className="flex items-center gap-2">
                 <span className="font-heading font-bold text-lg">{formatCurrency(total)}</span>
                 <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
@@ -202,7 +216,7 @@ export default function QuoteDetail() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="space-y-3 mt-4 pt-3 border-t">
-                {quote.items.map(item => {
+                {quote.items.map((item) => {
                   const mats = (item as any).materials || [];
                   const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
                   return (
@@ -229,18 +243,17 @@ export default function QuoteDetail() {
                 })}
               </div>
               <div className="border-t mt-3 pt-3 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">VAT (25%)</span><span>{formatCurrency(vat)}</span></div>
-                <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Moms (25%)</span><span>{formatCurrency(vat)}</span></div>
+                <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Totalt</span><span>{formatCurrency(total)}</span></div>
               </div>
             </CollapsibleContent>
           </Collapsible>
 
-          {/* Print-only: always-visible line items */}
           <div className="hidden print-only">
-            <h3 className="font-semibold text-sm mb-3">Line Items ({quote.items.length})</h3>
+            <h3 className="font-semibold text-sm mb-3">Arbetsrader ({quote.items.length})</h3>
             <div className="space-y-3">
-              {quote.items.map(item => {
+              {quote.items.map((item) => {
                 const mats = (item as any).materials || [];
                 const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
                 return (
@@ -277,13 +290,13 @@ export default function QuoteDetail() {
             <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimatedTime}</p>
           )}
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
-          {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground no-print">Valid until: {formatDate(quote.validUntil)}</p>}
+          {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground no-print">Giltig till: {formatDate(quote.validUntil)}</p>}
         </CardContent>
       </Card>
 
       <Card className="no-print">
         <CardContent className="p-4">
-          <h3 className="font-semibold mb-3 text-sm">Timeline</h3>
+          <h3 className="font-semibold mb-3 text-sm">Tidslinje</h3>
           {quote.events.map((event, idx) => (
             <TimelineEvent key={event.id} eventType={event.eventType} createdAt={event.createdAt} isLast={idx === quote.events.length - 1} />
           ))}
@@ -305,5 +318,3 @@ export default function QuoteDetail() {
     </div>
   );
 }
-
-

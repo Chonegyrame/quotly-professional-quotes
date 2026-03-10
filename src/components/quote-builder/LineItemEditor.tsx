@@ -1,10 +1,9 @@
-import { Plus, Trash2, ChevronDown, Package } from 'lucide-react';
+﻿import { Plus, Trash2, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { MaterialRowEditor } from './MaterialRowEditor';
 import { LineItem, MaterialRow } from './types';
 import { formatCurrency } from '@/data/mockData';
@@ -31,18 +30,18 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
   };
 
   const updateMaterial = (id: string, updated: MaterialRow) => {
-    onUpdate({ ...item, materials: item.materials.map(m => m.id === id ? updated : m) });
+    onUpdate({ ...item, materials: item.materials.map((m) => (m.id === id ? updated : m)) });
   };
 
   const removeMaterial = (id: string) => {
-    onUpdate({ ...item, materials: item.materials.filter(m => m.id !== id) });
+    onUpdate({ ...item, materials: item.materials.filter((m) => m.id !== id) });
   };
 
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">Job {index + 1}</span>
+          <span className="text-sm font-semibold">Arbetsrad {index + 1}</span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground font-medium">{formatCurrency(itemTotal)}</span>
             {canRemove && (
@@ -54,38 +53,37 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
         </div>
 
         <div>
-          <Label>Job Description</Label>
+          <Label>Arbetsbeskrivning</Label>
           <Input
-            placeholder="e.g. Elinstallation badrum"
+            placeholder="t.ex. Elinstallation badrum"
             value={item.description}
-            onChange={e => onUpdate({ ...item, description: e.target.value })}
+            onChange={(e) => onUpdate({ ...item, description: e.target.value })}
             className="mt-1"
           />
         </div>
 
         <div>
-          <Label>Labor Cost (SEK)</Label>
+          <Label>Arbetskostnad (SEK)</Label>
           <Input
             type="number"
             min="0"
             value={item.laborPrice || ''}
-            onChange={e => onUpdate({ ...item, laborPrice: parseFloat(e.target.value) || 0 })}
+            onChange={(e) => onUpdate({ ...item, laborPrice: parseFloat(e.target.value) || 0 })}
             className="mt-1"
           />
         </div>
 
         <div className="flex items-center justify-between">
-          <Label>Include VAT ({defaultVat}%)</Label>
-          <Switch checked={item.includeVat} onCheckedChange={v => onUpdate({ ...item, includeVat: v })} />
+          <Label>Inkludera moms ({defaultVat}%)</Label>
+          <Switch checked={item.includeVat} onCheckedChange={(v) => onUpdate({ ...item, includeVat: v })} />
         </div>
 
-        {/* Materials section */}
         <div className="border-t pt-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
               <Package className="h-4 w-4 text-muted-foreground" />
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Materials {item.materials.length > 0 && `(${item.materials.length})`}
+                Material {item.materials.length > 0 && `(${item.materials.length})`}
               </Label>
             </div>
             {item.materials.length > 0 && (
@@ -93,18 +91,18 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
             )}
           </div>
 
-          {item.materials.map(mat => (
+          {item.materials.map((mat) => (
             <MaterialRowEditor
               key={mat.id}
               material={mat}
               availableMaterials={availableMaterials}
-              onChange={updated => updateMaterial(mat.id, updated)}
+              onChange={(updated) => updateMaterial(mat.id, updated)}
               onRemove={() => removeMaterial(mat.id)}
             />
           ))}
 
           <Button variant="ghost" size="sm" className="w-full gap-1.5 mt-1 text-xs" onClick={addMaterial}>
-            <Plus className="h-3.5 w-3.5" /> Add Material
+            <Plus className="h-3.5 w-3.5" /> Lägg till material
           </Button>
         </div>
       </CardContent>

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+﻿import { useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { Check, FileText, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,19 +19,30 @@ export default function CustomerView() {
   const isAlreadyAccepted = quote?.status === 'accepted';
   const isDeclined = quote?.status === 'declined';
 
-  // Track opened
   useState(() => {
     if (id) {
-      // Only mark as opened if it's sent (not revised — we want to keep revised status)
-      const statusUpdate = quote?.status === 'sent' ? { opened_at: new Date().toISOString(), status: 'opened' } : { opened_at: new Date().toISOString() };
-      supabase.from('quotes').update(statusUpdate).eq('id', id).is('opened_at', null).then(() => {
-        supabase.from('quote_events').insert({ quote_id: id, event_type: 'opened' });
-      });
+      const statusUpdate =
+        quote?.status === 'sent'
+          ? { opened_at: new Date().toISOString(), status: 'opened' }
+          : { opened_at: new Date().toISOString() };
+
+      supabase
+        .from('quotes')
+        .update(statusUpdate)
+        .eq('id', id)
+        .is('opened_at', null)
+        .then(() => {
+          supabase.from('quote_events').insert({ quote_id: id, event_type: 'opened' });
+        });
     }
   });
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Laddar offert...</p></div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Laddar offert...</p>
+      </div>
+    );
   }
 
   if (!quote) {
@@ -47,31 +58,50 @@ export default function CustomerView() {
   }
 
   const items = quote.quote_items || [];
+
   const subtotal = items.reduce((s: number, i: any) => {
-    const matsTotal = (i.quote_item_materials || []).reduce((ms: number, m: any) => ms + m.quantity * m.unit_price, 0);
+    const matsTotal = (i.quote_item_materials || []).reduce(
+      (ms: number, m: any) => ms + m.quantity * m.unit_price,
+      0
+    );
     return s + i.quantity * i.unit_price + matsTotal;
   }, 0);
+
   const vat = items.reduce((s: number, i: any) => {
-    const matsTotal = (i.quote_item_materials || []).reduce((ms: number, m: any) => ms + m.quantity * m.unit_price, 0);
+    const matsTotal = (i.quote_item_materials || []).reduce(
+      (ms: number, m: any) => ms + m.quantity * m.unit_price,
+      0
+    );
     return s + (i.quantity * i.unit_price + matsTotal) * (i.vat_rate / 100);
   }, 0);
+
   const total = subtotal + vat;
 
   const handleAccept = async () => {
-    await supabase.from('quotes').update({
-      status: 'accepted',
-      accepted_at: new Date().toISOString(),
-    }).eq('id', quote.id);
+    await supabase
+      .from('quotes')
+      .update({
+        status: 'accepted',
+        accepted_at: new Date().toISOString(),
+      })
+      .eq('id', quote.id);
+
     await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'accepted' });
+
     setResponseType('accepted');
     setResponded(true);
   };
 
   const handleDecline = async () => {
-    await supabase.from('quotes').update({
-      status: 'declined',
-    }).eq('id', quote.id);
+    await supabase
+      .from('quotes')
+      .update({
+        status: 'declined',
+      })
+      .eq('id', quote.id);
+
     await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'declined' });
+
     setResponseType('declined');
     setResponded(true);
   };
@@ -80,26 +110,41 @@ export default function CustomerView() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <div className="text-center animate-fade-in max-w-sm">
-          <div className={`flex h-16 w-16 items-center justify-center rounded-full mx-auto mb-4 ${responseType === 'accepted' ? 'bg-success/10' : 'bg-destructive/10'}`}>
-            {responseType === 'accepted' ? <Check className="h-8 w-8 text-success" /> : <X className="h-8 w-8 text-destructive" />}
+          <div
+            className={`flex h-16 w-16 items-center justify-center rounded-full mx-auto mb-4 ${
+              responseType === 'accepted' ? 'bg-success/10' : 'bg-destructive/10'
+            }`}
+          >
+            {responseType === 'accepted' ? (
+              <Check className="h-8 w-8 text-success" />
+            ) : (
+              <X className="h-8 w-8 text-destructive" />
+            )}
           </div>
+
           <h1 className="text-2xl font-heading font-bold mb-2">
             {responseType === 'accepted' ? 'Offerten accepterad!' : 'Offerten nekad'}
           </h1>
+
           <p className="text-muted-foreground text-sm mb-4">
             {responseType === 'accepted'
               ? 'Tack! Företaget har fått en notifikation och kommer att kontakta dig inom kort.'
               : 'Företaget har informerats om ditt beslut.'}
           </p>
+
           {message && (
-            <Card><CardContent className="p-3 text-sm"><span className="text-muted-foreground">Ditt meddelande:</span><p className="mt-1">{message}</p></CardContent></Card>
+            <Card>
+              <CardContent className="p-3 text-sm">
+                <span className="text-muted-foreground">Ditt meddelande:</span>
+                <p className="mt-1">{message}</p>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
     );
   }
 
-  // Already accepted and not revised — show confirmation
   if (isAlreadyAccepted) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
@@ -167,20 +212,27 @@ export default function CustomerView() {
                         <span>{formatCurrency(item.quantity * item.unit_price)}</span>
                       </div>
                     )}
-                    {mats.length > 0 && mats.map((m: any) => (
-                      <div key={m.id} className="flex justify-between text-xs text-muted-foreground mt-0.5 pl-3">
-                        <span>{m.quantity} × {m.name}</span>
-                        <span>{formatCurrency(m.quantity * m.unit_price)}</span>
-                      </div>
-                    ))}
+                    {mats.length > 0 &&
+                      mats.map((m: any) => (
+                        <div key={m.id} className="flex justify-between text-xs text-muted-foreground mt-0.5 pl-3">
+                          <span>{m.quantity} × {m.name}</span>
+                          <span>{formatCurrency(m.quantity * m.unit_price)}</span>
+                        </div>
+                      ))}
                   </div>
                 );
               })}
             </div>
 
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Moms (25%)</span><span>{formatCurrency(vat)}</span></div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Delsumma</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Moms (25%)</span>
+                <span>{formatCurrency(vat)}</span>
+              </div>
               <div className="flex justify-between font-heading font-bold text-xl border-t pt-2">
                 <span>Totalt inkl. moms</span>
                 <span>{formatCurrency(total)}</span>
@@ -188,7 +240,9 @@ export default function CustomerView() {
             </div>
 
             {(quote as any).estimated_time && (
-              <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimated_time}</p>
+              <p className="mt-3 text-sm">
+                <span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimated_time}
+              </p>
             )}
             {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           </CardContent>
@@ -208,18 +262,30 @@ export default function CustomerView() {
 
         <Card>
           <CardContent className="p-4 space-y-3">
-            <Textarea placeholder="Meddelande (valfritt)..." value={message} onChange={e => setMessage(e.target.value)} rows={2} />
-            <Button className="w-full h-14 text-lg font-heading font-bold gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleAccept}>
+            <Textarea
+              placeholder="Meddelande (valfritt)..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={2}
+            />
+            <Button
+              className="w-full h-14 text-lg font-heading font-bold gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+              onClick={handleAccept}
+            >
               <Check className="h-5 w-5" /> {isRevised ? 'Godkänn ändringarna' : 'Acceptera offert'}
             </Button>
-            <Button variant="outline" className="w-full gap-2 text-destructive hover:text-destructive" onClick={handleDecline}>
+            <Button
+              variant="outline"
+              className="w-full gap-2 text-destructive hover:text-destructive"
+              onClick={handleDecline}
+            >
               <X className="h-4 w-4" /> {isRevised ? 'Neka ändringarna' : 'Neka offert'}
             </Button>
             <p className="text-xs text-center text-muted-foreground">Genom att acceptera godkänner du villkoren i offerten</p>
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">Powered by <span className="font-semibold">Quotly</span></p>
+        <p className="text-center text-xs text-muted-foreground mt-6">Skapad med <span className="font-semibold">Quotly</span></p>
       </div>
     </div>
   );

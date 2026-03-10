@@ -1,32 +1,30 @@
-import { useState, useMemo } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, FileText, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { Plus, FileText, CheckCircle, Send, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { QuoteCard } from '@/components/QuoteCard';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, type QuoteStatus, getQuoteTotal, formatCurrency } from '@/data/mockData';
 
-const filters: { label: string; value: QuoteStatus | 'all' }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Draft', value: 'draft' },
-  { label: 'Sent', value: 'sent' },
-  { label: 'Opened', value: 'opened' },
-  { label: 'Accepted', value: 'accepted' },
-  { label: 'Declined', value: 'declined' },
-  { label: 'Expired', value: 'expired' },
-];
+type DashboardFilter = 'all' | 'sent' | 'accepted' | 'draft';
+
+const topFilters = [
+  { label: 'Alla offerter', value: 'all', icon: FileText },
+  { label: 'Skickade offerter', value: 'sent', icon: Send },
+  { label: 'Accepterade', value: 'accepted', icon: CheckCircle },
+  { label: 'Utkast', value: 'draft', icon: Pencil },
+] as const;
 
 export default function Dashboard() {
-  const [activeFilter, setActiveFilter] = useState<QuoteStatus | 'all'>('all');
+  const [activeFilter, setActiveFilter] = useState<DashboardFilter>('all');
   const { quotes: dbQuotes, isLoading } = useQuotes();
 
-  // Use real DB quotes if available, otherwise show mock data
   const hasDbQuotes = dbQuotes.length > 0;
 
-  // Map DB quotes to match the mock format
   const displayQuotes = useMemo(() => {
     if (!hasDbQuotes) return mockQuotes;
+
     return dbQuotes.map((q: any) => ({
       id: q.id,
       quoteNumber: q.quote_number,
@@ -42,7 +40,7 @@ export default function Dashboard() {
       openedAt: q.opened_at,
       acceptedAt: q.accepted_at,
       companyId: q.company_id,
-            items: (q.quote_items || []).map((i: any) => ({
+      items: (q.quote_items || []).map((i: any) => ({
         id: i.id,
         description: i.description,
         quantity: i.quantity,
@@ -66,17 +64,26 @@ export default function Dashboard() {
   }, [dbQuotes, hasDbQuotes]);
 
   const stats = useMemo(() => {
-    const total = displayQuotes.length;
-    const accepted = displayQuotes.filter(q => q.status === 'accepted').length;
-    const pending = displayQuotes.filter(q => ['sent', 'opened'].includes(q.status)).length;
-    const declined = displayQuotes.filter(q => q.status === 'declined').length;
-    const totalValue = displayQuotes.filter(q => q.status === 'accepted').reduce((sum, q) => sum + getQuoteTotal(q.items), 0);
-    return { total, accepted, pending, declined, totalValue };
+    const all = displayQuotes.length;
+    const sent = displayQuotes.filter((q) => ['sent', 'opened'].includes(q.status)).length;
+    const accepted = displayQuotes.filter((q) => q.status === 'accepted').length;
+    const draft = displayQuotes.filter((q) => q.status === 'draft').length;
+    const totalValue = displayQuotes
+      .filter((q) => q.status === 'accepted')
+      .reduce((sum, q) => sum + getQuoteTotal(q.items), 0);
+
+    return { all, sent, accepted, draft, totalValue };
   }, [displayQuotes]);
 
   const filteredQuotes = useMemo(() => {
     if (activeFilter === 'all') return displayQuotes;
-    return displayQuotes.filter(q => q.status === activeFilter);
+    if (activeFilter === 'sent') {
+      return displayQuotes.filter((q) => ['sent', 'opened'].includes(q.status));
+    }
+    if (activeFilter === 'accepted') {
+      return displayQuotes.filter((q) => q.status === 'accepted');
+    }
+    return displayQuotes.filter((q) => q.status === 'draft');
   }, [activeFilter, displayQuotes]);
 
   return (
@@ -85,93 +92,73 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-heading font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            {hasDbQuotes ? 'Manage your quotes' : 'Sample data — create your first quote!'}
+            {hasDbQuotes ? 'Hantera dina offerter' : 'Exempeldata - skapa din första offert!'}
           </p>
         </div>
         <Link to="/quotes/new" className="md:hidden">
           <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
             <Plus className="h-4 w-4" />
-            New Quote
+            Ny offert
           </Button>
         </Link>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Total Quotes</span>
-            </div>
-            <div className="text-2xl font-heading font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle className="h-4 w-4 text-success" />
-              <span className="text-xs text-muted-foreground">Accepted</span>
-            </div>
-            <div className="text-2xl font-heading font-bold">{stats.accepted}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Clock className="h-4 w-4 text-warning" />
-              <span className="text-xs text-muted-foreground">Pending</span>
-            </div>
-            <div className="text-2xl font-heading font-bold">{stats.pending}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <XCircle className="h-4 w-4 text-destructive" />
-              <span className="text-xs text-muted-foreground">Declined</span>
-            </div>
-            <div className="text-2xl font-heading font-bold">{stats.declined}</div>
-          </CardContent>
-        </Card>
+        {topFilters.map((filter) => {
+          const Icon = filter.icon;
+          const isActive = activeFilter === filter.value;
+          const count =
+            filter.value === 'all'
+              ? stats.all
+              : filter.value === 'sent'
+                ? stats.sent
+                : filter.value === 'accepted'
+                  ? stats.accepted
+                  : stats.draft;
+
+          return (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => setActiveFilter(filter.value)}
+              className="text-left"
+            >
+              <Card className={isActive ? 'border-primary ring-1 ring-primary/30' : ''}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">{filter.label}</span>
+                  </div>
+                  <div className="text-2xl font-heading font-bold">{count}</div>
+                </CardContent>
+              </Card>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Accepted value */}
       <Card className="mb-6">
         <CardContent className="p-4">
-          <span className="text-xs text-muted-foreground">Total Accepted Value</span>
+          <span className="text-xs text-muted-foreground">Totalt accepterat värde</span>
           <div className="text-3xl font-heading font-bold text-success">{formatCurrency(stats.totalValue)}</div>
         </CardContent>
       </Card>
 
-      {/* Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
-        {filters.map(f => (
-          <button
-            key={f.value}
-            onClick={() => setActiveFilter(f.value)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeFilter === f.value
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Quote list */}
       {isLoading ? (
-        <p className="text-center text-muted-foreground py-8">Loading quotes...</p>
-      ) : (
+        <p className="text-center text-muted-foreground py-8">Laddar offerter...</p>
+      ) : filteredQuotes.length > 0 ? (
         <div className="space-y-2">
-          {filteredQuotes.map(quote => (
+          {filteredQuotes.map((quote) => (
             <QuoteCard key={quote.id} quote={quote} />
           ))}
         </div>
+      ) : (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            Inga offerter i denna kategori ännu.
+          </CardContent>
+        </Card>
       )}
     </div>
   );
 }
-

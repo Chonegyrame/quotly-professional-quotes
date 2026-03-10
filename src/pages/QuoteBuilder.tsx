@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
 
-const steps = ['Customer', 'Line Items', 'Preview'];
+const steps = ['Kund', 'Arbetsrader', 'Förhandsgranska'];
 
 const emptyItem = (): LineItem => ({
   id: Date.now().toString(),
@@ -45,8 +45,8 @@ export default function QuoteBuilder() {
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerAddress, setCustomerAddress] = useState('');
+  const [customerTelefon, setCustomerTelefon] = useState('');
+  const [customerAdress, setCustomerAdress] = useState('');
 
   const defaultValidity = company?.default_validity_days || 30;
   const defaultVat = company?.default_vat || 25;
@@ -61,8 +61,8 @@ export default function QuoteBuilder() {
     if (isEditMode && existingQuote && !initialized) {
       setCustomerName(existingQuote.customer_name);
       setCustomerEmail(existingQuote.customer_email);
-      setCustomerPhone(existingQuote.customer_phone || '');
-      setCustomerAddress(existingQuote.customer_address || '');
+      setCustomerTelefon(existingQuote.customer_phone || '');
+      setCustomerAdress(existingQuote.customer_address || '');
       setNotes(existingQuote.notes || '');
       setEstimatedTime((existingQuote as any).estimated_time || '');
       
@@ -116,7 +116,7 @@ export default function QuoteBuilder() {
       // Just set description from template name
       setItems([{ ...emptyItem(), description: template.name }]);
     }
-    toast.success(`Template "${template.name}" loaded`);
+    toast.success(`Mall "${template.name}" inläst`);
   };
 
   // Calculations
@@ -153,8 +153,8 @@ export default function QuoteBuilder() {
       const payload = {
         customer_name: customerName,
         customer_email: customerEmail,
-        customer_phone: customerPhone,
-        customer_address: customerAddress,
+        customer_phone: customerTelefon,
+        customer_address: customerAdress,
         notes,
         estimated_time: estimatedTime || '',
         valid_until: validUntil.toISOString().split('T')[0],
@@ -215,7 +215,7 @@ export default function QuoteBuilder() {
         navigate(isEditMode ? `/quotes/${editId}` : '/');
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save quote');
+      toast.error(err.message || 'Kunde inte spara offert');
     }
   };
 
@@ -227,33 +227,33 @@ export default function QuoteBuilder() {
         <Button variant="ghost" size="icon" onClick={() => currentStep > 0 ? setCurrentStep(currentStep - 1) : navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-heading font-bold">{isEditMode ? 'Edit Quote' : 'New Quote'}</h1>
+        <h1 className="text-xl font-heading font-bold">{isEditMode ? 'Redigera offert' : 'Ny offert'}</h1>
       </div>
 
       <StepIndicator steps={steps} currentStep={currentStep} />
 
       {currentStep === 0 && (
         <Card className="animate-fade-in">
-          <CardHeader><CardTitle className="text-lg">Customer Details</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Kunduppgifter</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="name">Name *</Label>
-              <Input id="name" placeholder="e.g. Anna Eriksson" value={customerName} onChange={e => setCustomerName(e.target.value)} className="mt-1" />
+              <Label htmlFor="name">Namn *</Label>
+              <Input id="name" placeholder="t.ex. Anna Eriksson" value={customerName} onChange={e => setCustomerName(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">E-post *</Label>
               <Input id="email" type="email" placeholder="anna@example.com" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input id="phone" placeholder="070-123 45 67" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="mt-1" />
+              <Label htmlFor="phone">Telefon</Label>
+              <Input id="phone" placeholder="070-123 45 67" value={customerTelefon} onChange={e => setCustomerTelefon(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="address">Address</Label>
-              <Input id="address" placeholder="Street, City" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="mt-1" />
+              <Label htmlFor="address">Adress</Label>
+              <Input id="address" placeholder="Gata, stad" value={customerAdress} onChange={e => setCustomerAdress(e.target.value)} className="mt-1" />
             </div>
             <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep0} onClick={() => setCurrentStep(1)}>
-              Next <ArrowRight className="h-4 w-4" />
+              Nästa <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
         </Card>
@@ -277,21 +277,21 @@ export default function QuoteBuilder() {
           ))}
 
           <Button variant="outline" className="w-full gap-2" onClick={addItem}>
-            <Plus className="h-4 w-4" /> Add Job
+            <Plus className="h-4 w-4" /> Lägg till arbetsrad
           </Button>
 
           <Card>
             <CardContent className="p-4 space-y-3">
               <div>
-                <Label>Beräknad arbetstid (optional)</Label>
-                <Input placeholder="e.g. 2 dagar, 3–4 timmar" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} className="mt-1" />
+                <Label>Beräknad arbetstid (valfritt)</Label>
+                <Input placeholder="t.ex. 2 dagar, 3-4 timmar" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} className="mt-1" />
               </div>
               <div>
-                <Label>Notes (optional)</Label>
-                <Textarea placeholder="Any additional notes for the customer..." value={notes} onChange={e => setNotes(e.target.value)} className="mt-1" />
+                <Label>Noteringar (valfritt)</Label>
+                <Textarea placeholder="Eventuella extra noteringar till kunden..." value={notes} onChange={e => setNotes(e.target.value)} className="mt-1" />
               </div>
               <div>
-                <Label>Validity (days)</Label>
+                <Label>Giltighet (dagar)</Label>
                 <Input type="number" min="1" value={validityDays} onChange={e => setValidityDays(parseInt(e.target.value) || 30)} className="mt-1" />
               </div>
             </CardContent>
@@ -300,11 +300,11 @@ export default function QuoteBuilder() {
           <Card>
             <CardContent className="p-4">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-muted-foreground">Delsumma</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">VAT ({defaultVat}%)</span>
+                <span className="text-muted-foreground">Moms ({defaultVat}%)</span>
                 <span>{formatCurrency(vat)}</span>
               </div>
               <div className="flex justify-between font-heading font-bold text-lg border-t pt-2">
@@ -315,7 +315,7 @@ export default function QuoteBuilder() {
           </Card>
 
           <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep1} onClick={() => setCurrentStep(2)}>
-            Preview <ArrowRight className="h-4 w-4" />
+            Förhandsgranska <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       )}
@@ -324,13 +324,13 @@ export default function QuoteBuilder() {
         <div className="space-y-4 animate-fade-in">
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-heading font-bold mb-3">Quote Preview</h3>
+              <h3 className="font-heading font-bold mb-3">Offertförhandsvisning</h3>
               <div className="space-y-1 text-sm mb-4">
-                <p><span className="text-muted-foreground">To:</span> {customerName}</p>
-                <p><span className="text-muted-foreground">Email:</span> {customerEmail}</p>
-                {customerPhone && <p><span className="text-muted-foreground">Phone:</span> {customerPhone}</p>}
-                {customerAddress && <p><span className="text-muted-foreground">Address:</span> {customerAddress}</p>}
-                <p><span className="text-muted-foreground">Valid until:</span> {validUntil.toLocaleDateString('sv-SE')}</p>
+                <p><span className="text-muted-foreground">Till:</span> {customerName}</p>
+                <p><span className="text-muted-foreground">E-post:</span> {customerEmail}</p>
+                {customerTelefon && <p><span className="text-muted-foreground">Telefon:</span> {customerTelefon}</p>}
+                {customerAdress && <p><span className="text-muted-foreground">Adress:</span> {customerAdress}</p>}
+                <p><span className="text-muted-foreground">Giltig till:</span> {validUntil.toLocaleDateString('sv-SE')}</p>
               </div>
 
               {items.filter(i => i.description).map(item => {
@@ -343,7 +343,7 @@ export default function QuoteBuilder() {
                     </div>
                     {item.laborPrice > 0 && (
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Labor</span>
+                        <span>Arbete</span>
                         <span>{formatCurrency(item.laborPrice)}</span>
                       </div>
                     )}
@@ -358,8 +358,8 @@ export default function QuoteBuilder() {
               })}
 
               <div className="mt-4 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">VAT ({defaultVat}%)</span><span>{formatCurrency(vat)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Moms ({defaultVat}%)</span><span>{formatCurrency(vat)}</span></div>
                 <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
               </div>
 
@@ -372,10 +372,10 @@ export default function QuoteBuilder() {
 
           <div className="grid grid-cols-2 gap-3">
             <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={isPending}>
-              <Save className="h-4 w-4" /> {isEditMode ? 'Save' : 'Save Draft'}
+              <Save className="h-4 w-4" /> {isEditMode ? 'Spara' : 'Spara utkast'}
             </Button>
             <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={isPending}>
-              <Send className="h-4 w-4" /> {isEditMode ? 'Update & Send' : 'Send Quote'}
+              <Send className="h-4 w-4" /> {isEditMode ? 'Uppdatera och skicka' : 'Skicka offert'}
             </Button>
           </div>
         </div>
@@ -399,5 +399,7 @@ export default function QuoteBuilder() {
     </div>
   );
 }
+
+
 
 

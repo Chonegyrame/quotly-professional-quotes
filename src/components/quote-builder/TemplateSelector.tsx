@@ -1,4 +1,4 @@
-import { FileText } from 'lucide-react';
+﻿import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -8,11 +8,14 @@ interface TemplateSelectorProps {
 }
 
 const categoryLabels: Record<string, string> = {
+  build: 'Bygg',
+  electric: 'El',
+  vvs: 'VVS',
+  general: 'Övrigt',
   electrical: 'El',
   plumbing: 'VVS',
   painting: 'Måleri',
-  carpentry: 'Snickeri',
-  general: 'Övrigt',
+  carpentry: 'Bygg',
 };
 
 export function TemplateSelector({ templates, onSelect }: TemplateSelectorProps) {
@@ -23,19 +26,21 @@ export function TemplateSelector({ templates, onSelect }: TemplateSelectorProps)
       <CardContent className="p-4">
         <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
           <FileText className="h-4 w-4 text-muted-foreground" />
-          Start from a template
+          Utgå från en mall
         </p>
         <div className="flex gap-2 flex-wrap">
-          {templates.map(t => (
+          {templates.map((template) => (
             <Button
-              key={t.id}
+              key={template.id}
               variant="outline"
               size="sm"
               className="text-xs"
-              onClick={() => onSelect(t)}
+              onClick={() => onSelect(template)}
             >
-              {t.name}
-              <span className="ml-1 text-muted-foreground">({categoryLabels[t.category] || t.category})</span>
+              {template.name}
+              <span className="ml-1 text-muted-foreground">
+                ({categoryLabels[template.category] || template.category})
+              </span>
             </Button>
           ))}
         </div>
