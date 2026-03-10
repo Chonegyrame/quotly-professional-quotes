@@ -21,38 +21,17 @@ interface SendQuoteModalProps {
 function detectMethod(value: string): 'email' | 'phone' | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  // Email pattern
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'email';
-  // Swedish phone: starts with 0 or +46, digits/spaces/dashes, 7+ digits
   const digits = trimmed.replace(/[\s\-\(\)]/g, '');
   if (/^(\+46|0)\d{7,}$/.test(digits)) return 'phone';
   return null;
-}
-
-function getErrorMessage(err: unknown): string {
-  if (!err) return 'Kunde inte skicka offerten';
-
-  if (typeof err === 'object' && err !== null && 'message' in err) {
-    const msg = String((err as { message?: unknown }).message ?? '');
-
-    try {
-      const parsed = JSON.parse(msg);
-      if (typeof parsed?.error === 'string') return parsed.error;
-      if (typeof parsed?.message === 'string') return parsed.message;
-    } catch {
-      // Keep original message if not JSON
-    }
-
-    return msg || 'Kunde inte skicka offerten';
-  }
-
-  return String(err);
 }
 
 export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil, onSentSuccess }: SendQuoteModalProps) {
   const [recipient, setRecipient] = useState(customerEmail);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+
   useEffect(() => {
     if (!open) return;
     setRecipient(customerEmail || '');
@@ -66,6 +45,7 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
       setError('Ange en giltig e-postadress eller telefonnummer (t.ex. 070-123 45 67)');
       return;
     }
+
     setError('');
     setSending(true);
 
@@ -78,8 +58,10 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
         },
       });
 
+      // supabase-js puts non-2xx response body in `data` and a generic message in `fnError`
       if (fnError) {
-        throw new Error(getErrorMessage(fnError));
+        const backendMsg = data?.error ?? data?.message ?? fnError.message;
+        throw new Error(typeof backendMsg === 'string' ? backendMsg : JSON.stringify(backendMsg));
       }
 
       if (data?.error) {
@@ -93,8 +75,9 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
       toast.success('Offerten har skickats!');
       onOpenChange(false);
     } catch (err: unknown) {
-      console.error('Send error:', err);
-      toast.error(getErrorMessage(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Send error:', msg);
+      toast.error(msg || 'Kunde inte skicka offerten');
     } finally {
       setSending(false);
     }
@@ -109,7 +92,7 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
             Skicka offert {quoteNumber}
           </DialogTitle>
           <DialogDescription>
-            Ange kundens e-postadress eller telefonnummer för att skicka offerten.
+            Ange kundens e-postadress eller telefonnummer for att skicka offerten.
           </DialogDescription>
         </DialogHeader>
 
@@ -176,5 +159,3 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
     </Dialog>
   );
 }
-
-
