@@ -1,4 +1,5 @@
-﻿import { Plus, Trash2, Package } from 'lucide-react';
+﻿import { useMemo, useState } from 'react';
+import { Plus, Trash2, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,6 +8,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { MaterialRowEditor } from './MaterialRowEditor';
 import { LineItem, MaterialRow } from './types';
 import { formatCurrency } from '@/data/mockData';
+
+type MaterialTrade = 'build' | 'electric' | 'vvs';
 
 interface LineItemEditorProps {
   item: LineItem;
@@ -20,14 +23,50 @@ interface LineItemEditorProps {
     purchase_price: number;
     markup_percent: number;
     unit: string;
+    category?: string | null;
   }[];
   onUpdate: (updated: LineItem) => void;
   onRemove: () => void;
 }
 
-export function LineItemEditor({ item, index, canRemove, defaultVat, availableMaterials, onUpdate, onRemove }: LineItemEditorProps) {
+const tradeLabels: Record<MaterialTrade, string> = {
+  build: 'Bygg',
+  electric: 'El',
+  vvs: 'VVS',
+};
+
+const normalizeMaterialTrade = (value: string | null | undefined): MaterialTrade | 'general' => {
+  if (!value) return 'general';
+  const normalized = value.toLowerCase();
+
+  if (normalized === 'build' || normalized === 'electric' || normalized === 'vvs') return normalized;
+  if (normalized === 'electrical') return 'electric';
+  if (normalized === 'plumbing') return 'vvs';
+  if (normalized === 'carpentry') return 'build';
+
+  return 'general';
+};
+
+export function LineItemEditor({
+  item,
+  index,
+  canRemove,
+  defaultVat,
+  availableMaterials,
+  onUpdate,
+  onRemove,
+}: LineItemEditorProps) {
+  const [selectedTrade, setSelectedTrade] = useState<MaterialTrade>('build');
   const materialsTotal = item.materials.reduce((s, m) => s + m.quantity * m.unitPrice, 0);
   const itemTotal = item.laborPrice + materialsTotal;
+
+  const filteredMaterials = useMemo(
+    () =>
+      availableMaterials.filter(
+        (material) => normalizeMaterialTrade(material.category) === selectedTrade
+      ),
+    [availableMaterials, selectedTrade]
+  );
 
   const addMaterial = () => {
     onUpdate({
@@ -97,6 +136,26 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
         </div>
 
         <div className="border-t pt-3">
+          <div className="mb-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bransch</Label>
+            <div className="flex gap-1.5 mt-1">
+              {(Object.keys(tradeLabels) as MaterialTrade[]).map((trade) => (
+                <button
+                  key={trade}
+                  type="button"
+                  onClick={() => setSelectedTrade(trade)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    selectedTrade === trade
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground'
+                  }`}
+                >
+                  {tradeLabels[trade]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
               <Package className="h-4 w-4 text-muted-foreground" />
@@ -113,7 +172,7 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
             <MaterialRowEditor
               key={mat.id}
               material={mat}
-              availableMaterials={availableMaterials}
+              availableMaterials={filteredMaterials}
               onChange={(updated) => updateMaterial(mat.id, updated)}
               onRemove={() => removeMaterial(mat.id)}
             />
@@ -127,4 +186,3 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
     </Card>
   );
 }
-

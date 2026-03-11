@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Package, Trash2, Pencil, Hammer, Zap, Wrench, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Package, Trash2, Pencil, Hammer, Zap, Wrench, Search, Shapes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,12 +28,13 @@ import {
 
 type MaterialCategory = StarterTrade | 'general';
 
-const tradeOrder: StarterTrade[] = ['build', 'electric', 'vvs'];
+const tradeOrder: MaterialCategory[] = ['build', 'electric', 'vvs', 'general'];
 
-const tradeIcons: Record<StarterTrade, typeof Hammer> = {
+const tradeIcons: Record<MaterialCategory, typeof Hammer> = {
   build: Hammer,
   electric: Zap,
   vvs: Wrench,
+  general: Shapes,
 };
 
 const categoryLabels: Record<MaterialCategory, string> = {
@@ -41,6 +42,13 @@ const categoryLabels: Record<MaterialCategory, string> = {
   electric: 'El',
   vvs: 'VVS',
   general: 'Övrigt',
+};
+
+const categorySubtitles: Record<MaterialCategory, string> = {
+  build: starterTradeMeta.build.subtitle,
+  electric: starterTradeMeta.electric.subtitle,
+  vvs: starterTradeMeta.vvs.subtitle,
+  general: 'Specialmaterial, tillbehör och övriga artiklar',
 };
 
 const normalizeCategory = (
@@ -85,7 +93,7 @@ export default function Materials() {
   const queryClient = useQueryClient();
   const { materials, isLoading } = useMaterials();
 
-  const [activeTrade, setActiveTrade] = useState<StarterTrade>('build');
+  const [activeTrade, setActiveTrade] = useState<MaterialCategory>('build');
 
   const [formMode, setFormMode] = useState<'none' | 'add' | 'edit'>('none');
   const [editId, setEditId] = useState<string | null>(null);
@@ -373,26 +381,33 @@ export default function Materials() {
 
       <div className="mb-4">
         <p className="text-sm font-semibold mb-2">Välj bransch</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {tradeOrder.map((trade) => {
             const Icon = tradeIcons[trade];
             const selected = activeTrade === trade;
+            const tradeCardThemeClass =
+              trade === 'build'
+                ? 'border-l-[#8B4513] bg-[#fdf6ee]'
+                : trade === 'electric'
+                  ? 'border-l-[#f0c000] bg-[#fffde7]'
+                  : trade === 'vvs'
+                    ? 'border-l-[#1565c0] bg-[#e8f0fe]'
+                    : 'border-l-[#757575] bg-[#f5f5f5]';
+
             return (
               <button
                 key={trade}
                 type="button"
                 onClick={() => setActiveTrade(trade)}
-                className={`rounded-xl border p-4 text-left transition-all ${
-                  selected
-                    ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20'
-                    : 'border-border bg-card hover:border-primary/30'
-                }`}
+                className={`trade-card-interactive h-[220px] w-[200px] rounded-[12px] border-l-[4px] p-5 text-left ${tradeCardThemeClass} ${selected ? 'ring-2 ring-primary/25' : ''}`}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-semibold">{starterTradeMeta[trade].label}</span>
+                <div className="flex h-full flex-col justify-center text-slate-800">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Icon className="h-4 w-4 text-slate-700" />
+                    <span className="text-[20px] font-semibold leading-tight">{categoryLabels[trade]}</span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-700">{categorySubtitles[trade]}</p>
                 </div>
-                <p className="text-xs text-muted-foreground">{starterTradeMeta[trade].subtitle}</p>
               </button>
             );
           })}
@@ -404,7 +419,7 @@ export default function Materials() {
         <Input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder={`Sök material i ${starterTradeMeta[activeTrade].label.toLowerCase()}...`}
+          placeholder={`Sök material i ${categoryLabels[activeTrade].toLowerCase()}...`}
           className="pl-9"
         />
       </div>
@@ -444,9 +459,18 @@ export default function Materials() {
             const normalizedCategory = normalizeCategory(material.category);
             const purchasePrice = getMaterialPurchasePrice(material);
             const markupPercent = getMaterialMarkupPercent(material);
+            const materialRowThemeClass =
+              normalizedCategory === 'build'
+                ? 'material-row-theme-build'
+                : normalizedCategory === 'electric'
+                  ? 'material-row-theme-electric'
+                  : normalizedCategory === 'vvs'
+                    ? 'material-row-theme-vvs'
+                    : 'material-row-theme-general';
+            const materialRowClassName = `${materialRowThemeClass}${isEditing ? ' ring-2 ring-primary' : ''}`;
 
             return (
-              <Card key={material.id} className={isEditing ? 'ring-2 ring-primary' : ''}>
+              <Card key={material.id} className={materialRowClassName}>
                 <CardContent className="p-4 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -535,6 +559,24 @@ export default function Materials() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
