@@ -13,7 +13,14 @@ interface LineItemEditorProps {
   index: number;
   canRemove: boolean;
   defaultVat: number;
-  availableMaterials: { id: string; name: string; unit_price: number; unit: string }[];
+  availableMaterials: {
+    id: string;
+    name: string;
+    unit_price: number;
+    purchase_price: number;
+    markup_percent: number;
+    unit: string;
+  }[];
   onUpdate: (updated: LineItem) => void;
   onRemove: () => void;
 }
@@ -25,7 +32,18 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
   const addMaterial = () => {
     onUpdate({
       ...item,
-      materials: [...item.materials, { id: Date.now().toString(), name: '', quantity: 1, unitPrice: 0, unit: 'st' }],
+      materials: [
+        ...item.materials,
+        {
+          id: Date.now().toString(),
+          name: '',
+          quantity: 1,
+          unitPrice: 0,
+          purchasePrice: 0,
+          markupPercent: 0,
+          unit: 'st',
+        },
+      ],
     });
   };
 
@@ -109,3 +127,4 @@ export function LineItemEditor({ item, index, canRemove, defaultVat, availableMa
     </Card>
   );
 }
+

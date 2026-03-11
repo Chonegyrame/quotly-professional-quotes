@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -65,7 +65,10 @@ export type Database = {
           company_id: string
           created_at: string
           id: string
+          is_deleted: boolean
+          markup_percent: number
           name: string
+          purchase_price: number
           unit: string | null
           unit_price: number
         }
@@ -74,7 +77,10 @@ export type Database = {
           company_id: string
           created_at?: string
           id?: string
+          is_deleted?: boolean
+          markup_percent?: number
           name: string
+          purchase_price?: number
           unit?: string | null
           unit_price?: number
         }
@@ -83,7 +89,10 @@ export type Database = {
           company_id?: string
           created_at?: string
           id?: string
+          is_deleted?: boolean
+          markup_percent?: number
           name?: string
+          purchase_price?: number
           unit?: string | null
           unit_price?: number
         }
@@ -148,8 +157,10 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_deleted: boolean`r`n          markup_percent: number
           material_id: string | null
           name: string
+          purchase_price: number
           quantity: number
           quote_item_id: string
           sort_order: number | null
@@ -159,8 +170,10 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_deleted?: boolean`r`n          markup_percent?: number
           material_id?: string | null
           name?: string
+          purchase_price?: number
           quantity?: number
           quote_item_id: string
           sort_order?: number | null
@@ -170,8 +183,10 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_deleted?: boolean`r`n          markup_percent?: number
           material_id?: string | null
           name?: string
+          purchase_price?: number
           quantity?: number
           quote_item_id?: string
           sort_order?: number | null
@@ -474,3 +489,8 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
+
+
+
+

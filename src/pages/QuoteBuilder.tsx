@@ -56,7 +56,6 @@ export default function QuoteBuilder() {
   const [estimatedTime, setEstimatedTime] = useState('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
 
-  // Load existing quote data in edit mode
   useEffect(() => {
     if (isEditMode && existingQuote && !initialized) {
       setCustomerName(existingQuote.customer_name);
@@ -65,11 +64,14 @@ export default function QuoteBuilder() {
       setCustomerAdress(existingQuote.customer_address || '');
       setNotes(existingQuote.notes || '');
       setEstimatedTime((existingQuote as any).estimated_time || '');
-      
+
       if (existingQuote.valid_until) {
         const validDate = new Date(existingQuote.valid_until);
         const now = new Date();
-        const diffDays = Math.max(1, Math.round((validDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        const diffDays = Math.max(
+          1,
+          Math.round((validDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        );
         setValidityDays(diffDays);
       }
 
@@ -84,6 +86,8 @@ export default function QuoteBuilder() {
           name: m.name,
           quantity: m.quantity,
           unitPrice: m.unit_price,
+          purchasePrice: m.purchase_price ?? m.unit_price,
+          markupPercent: m.markup_percent ?? 0,
           unit: m.unit || 'st',
         })),
       }));
@@ -93,62 +97,82 @@ export default function QuoteBuilder() {
   }, [isEditMode, existingQuote, initialized]);
 
   const addItem = () => setItems([...items, emptyItem()]);
-  const removeItem = (id: string) => { if (items.length > 1) setItems(items.filter(i => i.id !== id)); };
-  const updateItem = (id: string, updated: LineItem) => setItems(items.map(i => i.id === id ? updated : i));
+  const removeItem = (id: string) => {
+    if (items.length > 1) setItems(items.filter((i) => i.id !== id));
+  };
+  const updateItem = (id: string, updated: LineItem) =>
+    setItems(items.map((i) => (i.id === id ? updated : i)));
 
   const handleTemplateSelect = (template: any) => {
     const defaultItems = template.default_items;
     if (Array.isArray(defaultItems) && defaultItems.length > 0) {
-      setItems(defaultItems.map((di: any, idx: number) => ({
-        id: Date.now().toString() + idx,
-        description: di.description || template.name,
-        laborPrice: di.labor_price || 0,
-        includeVat: true,
-        materials: (di.materials || []).map((m: any, mi: number) => ({
-          id: Date.now().toString() + idx + '-' + mi,
-          name: m.name || '',
-          quantity: m.quantity || 1,
-          unitPrice: m.unit_price || 0,
-          unit: m.unit || 'st',
-        })),
-      })));
+      setItems(
+        defaultItems.map((di: any, idx: number) => ({
+          id: Date.now().toString() + idx,
+          description: di.description || template.name,
+          laborPrice: di.labor_price || 0,
+          includeVat: true,
+          materials: (di.materials || []).map((m: any, mi: number) => ({
+            id: Date.now().toString() + idx + '-' + mi,
+            name: m.name || '',
+            quantity: m.quantity || 1,
+            unitPrice: m.unit_price || 0,
+            purchasePrice: m.purchase_price ?? m.unit_price ?? 0,
+            markupPercent: m.markup_percent || 0,
+            unit: m.unit || 'st',
+          })),
+        }))
+      );
     } else {
-      // Just set description from template name
       setItems([{ ...emptyItem(), description: template.name }]);
     }
     toast.success(`Mall "${template.name}" inläst`);
   };
 
-  // Calculations
-  const getItemTotal = (item: LineItem) => {
-    const matsTotal = item.materials.reduce((s, m) => s + m.quantity * m.unitPrice, 0);
-    return item.laborPrice + matsTotal;
-  };
+  const getItemMaterialCustomerTotal = (item: LineItem) =>
+    item.materials.reduce((sum, material) => sum + material.quantity * material.unitPrice, 0);
 
-  const subtotal = items.reduce((sum, i) => sum + getItemTotal(i), 0);
+  const getItemMaterialCostTotal = (item: LineItem) =>
+    item.materials.reduce((sum, material) => sum + material.quantity * material.purchasePrice, 0);
+
+  const getItemTotal = (item: LineItem) => item.laborPrice + getItemMaterialCustomerTotal(item);
+
+  const subtotal = items.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const totalMaterialCost = items.reduce((sum, item) => sum + getItemMaterialCostTotal(item), 0);
+  const totalLaborCost = items.reduce((sum, item) => sum + item.laborPrice, 0);
+
   const vatRate = defaultVat / 100;
-  const vat = items.reduce((sum, i) => i.includeVat ? getItemTotal(i) * vatRate : 0 + sum, 0);
+  const vat = items.reduce(
+    (sum, item) => sum + (item.includeVat ? getItemTotal(item) * vatRate : 0),
+    0
+  );
   const total = subtotal + vat;
+
+  const marginAmount = subtotal - totalMaterialCost - totalLaborCost;
+  const marginPercent = subtotal > 0 ? (marginAmount / subtotal) * 100 : 0;
 
   const validUntil = new Date();
   validUntil.setDate(validUntil.getDate() + validityDays);
 
   const canProceedStep0 = customerName.trim() && customerEmail.trim();
-  const canProceedStep1 = items.some(i => i.description.trim() && (i.laborPrice > 0 || i.materials.some(m => m.unitPrice > 0)));
+  const canProceedStep1 = items.some(
+    (i) => i.description.trim() && (i.laborPrice > 0 || i.materials.some((m) => m.unitPrice > 0))
+  );
 
   const handleSave = async (status: 'draft' | 'sent') => {
-    // When editing a previously sent/opened quote, force status back to draft if saving as draft
     const effectiveStatus = status === 'sent' ? 'draft' : status;
 
     try {
-      const quoteItems = items.filter(i => i.description.trim()).map(i => ({
-        description: i.description,
-        quantity: 1,
-        unit_price: getItemTotal(i),
-        vat_rate: i.includeVat ? defaultVat : 0,
-        _materials: i.materials.filter(m => m.name.trim()),
-        _laborPrice: i.laborPrice,
-      }));
+      const quoteItems = items
+        .filter((i) => i.description.trim())
+        .map((i) => ({
+          description: i.description,
+          quantity: 1,
+          unit_price: getItemTotal(i),
+          vat_rate: i.includeVat ? defaultVat : 0,
+          _materials: i.materials.filter((m) => m.name.trim()),
+          _laborPrice: i.laborPrice,
+        }));
 
       const payload = {
         customer_name: customerName,
@@ -159,7 +183,7 @@ export default function QuoteBuilder() {
         estimated_time: estimatedTime || '',
         valid_until: validUntil.toISOString().split('T')[0],
         status: effectiveStatus,
-        items: quoteItems.map(qi => ({
+        items: quoteItems.map((qi) => ({
           description: qi.description,
           quantity: qi.quantity,
           unit_price: qi._laborPrice,
@@ -177,7 +201,6 @@ export default function QuoteBuilder() {
         quoteId = quote.id;
       }
 
-      // Insert materials for each quote item
       const { data: savedItems } = await supabase
         .from('quote_items')
         .select('id, description, sort_order')
@@ -186,18 +209,20 @@ export default function QuoteBuilder() {
 
       if (savedItems) {
         const materialsToInsert: any[] = [];
-        savedItems.forEach((si, idx) => {
+        savedItems.forEach((savedItem, idx) => {
           const originalItem = quoteItems[idx];
           if (originalItem?._materials) {
-            originalItem._materials.forEach((m, mi) => {
+            originalItem._materials.forEach((material, materialIndex) => {
               materialsToInsert.push({
-                quote_item_id: si.id,
-                material_id: m.materialId || null,
-                name: m.name,
-                quantity: m.quantity,
-                unit_price: m.unitPrice,
-                unit: m.unit,
-                sort_order: mi,
+                quote_item_id: savedItem.id,
+                material_id: material.materialId || null,
+                name: material.name,
+                quantity: material.quantity,
+                unit_price: material.unitPrice,
+                purchase_price: material.purchasePrice,
+                markup_percent: material.markupPercent,
+                unit: material.unit,
+                sort_order: materialIndex,
               });
             });
           }
@@ -224,7 +249,11 @@ export default function QuoteBuilder() {
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
       <div className="flex items-center gap-3 mb-4">
-        <Button variant="ghost" size="icon" onClick={() => currentStep > 0 ? setCurrentStep(currentStep - 1) : navigate('/')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => (currentStep > 0 ? setCurrentStep(currentStep - 1) : navigate('/'))}
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-heading font-bold">{isEditMode ? 'Redigera offert' : 'Ny offert'}</h1>
@@ -234,25 +263,56 @@ export default function QuoteBuilder() {
 
       {currentStep === 0 && (
         <Card className="animate-fade-in">
-          <CardHeader><CardTitle className="text-lg">Kunduppgifter</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-lg">Kunduppgifter</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="name">Namn *</Label>
-              <Input id="name" placeholder="t.ex. Anna Eriksson" value={customerName} onChange={e => setCustomerName(e.target.value)} className="mt-1" />
+              <Input
+                id="name"
+                placeholder="t.ex. Anna Eriksson"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label htmlFor="email">E-post *</Label>
-              <Input id="email" type="email" placeholder="anna@example.com" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} className="mt-1" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="anna@example.com"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label htmlFor="phone">Telefon</Label>
-              <Input id="phone" placeholder="070-123 45 67" value={customerTelefon} onChange={e => setCustomerTelefon(e.target.value)} className="mt-1" />
+              <Input
+                id="phone"
+                placeholder="070-123 45 67"
+                value={customerTelefon}
+                onChange={(e) => setCustomerTelefon(e.target.value)}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label htmlFor="address">Adress</Label>
-              <Input id="address" placeholder="Gata, stad" value={customerAdress} onChange={e => setCustomerAdress(e.target.value)} className="mt-1" />
+              <Input
+                id="address"
+                placeholder="Gata, stad"
+                value={customerAdress}
+                onChange={(e) => setCustomerAdress(e.target.value)}
+                className="mt-1"
+              />
             </div>
-            <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep0} onClick={() => setCurrentStep(1)}>
+            <Button
+              className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+              disabled={!canProceedStep0}
+              onClick={() => setCurrentStep(1)}
+            >
               Nästa <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
@@ -271,7 +331,7 @@ export default function QuoteBuilder() {
               canRemove={items.length > 1}
               defaultVat={defaultVat}
               availableMaterials={availableMaterials}
-              onUpdate={updated => updateItem(item.id, updated)}
+              onUpdate={(updated) => updateItem(item.id, updated)}
               onRemove={() => removeItem(item.id)}
             />
           ))}
@@ -284,15 +344,53 @@ export default function QuoteBuilder() {
             <CardContent className="p-4 space-y-3">
               <div>
                 <Label>Beräknad arbetstid (valfritt)</Label>
-                <Input placeholder="t.ex. 2 dagar, 3-4 timmar" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} className="mt-1" />
+                <Input
+                  placeholder="t.ex. 2 dagar, 3-4 timmar"
+                  value={estimatedTime}
+                  onChange={(e) => setEstimatedTime(e.target.value)}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label>Noteringar (valfritt)</Label>
-                <Textarea placeholder="Eventuella extra noteringar till kunden..." value={notes} onChange={e => setNotes(e.target.value)} className="mt-1" />
+                <Textarea
+                  placeholder="Eventuella extra noteringar till kunden..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label>Giltighet (dagar)</Label>
-                <Input type="number" min="1" value={validityDays} onChange={e => setValidityDays(parseInt(e.target.value) || 30)} className="mt-1" />
+                <Input
+                  type="number"
+                  min="1"
+                  value={validityDays}
+                  onChange={(e) => setValidityDays(parseInt(e.target.value, 10) || 30)}
+                  className="mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-2">
+              <h3 className="font-semibold">Marginal (live)</h3>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total materialkostnad</span>
+                <span>{formatCurrency(totalMaterialCost)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total arbetstidskostnad</span>
+                <span>{formatCurrency(totalLaborCost)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Totalt pris mot kund</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between border-t pt-2 font-semibold">
+                <span>Beräknad marginal</span>
+                <span>{marginPercent.toFixed(1)}%</span>
               </div>
             </CardContent>
           </Card>
@@ -314,7 +412,11 @@ export default function QuoteBuilder() {
             </CardContent>
           </Card>
 
-          <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" disabled={!canProceedStep1} onClick={() => setCurrentStep(2)}>
+          <Button
+            className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+            disabled={!canProceedStep1}
+            onClick={() => setCurrentStep(2)}
+          >
             Förhandsgranska <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -326,55 +428,127 @@ export default function QuoteBuilder() {
             <CardContent className="p-4">
               <h3 className="font-heading font-bold mb-3">Offertförhandsvisning</h3>
               <div className="space-y-1 text-sm mb-4">
-                <p><span className="text-muted-foreground">Till:</span> {customerName}</p>
-                <p><span className="text-muted-foreground">E-post:</span> {customerEmail}</p>
-                {customerTelefon && <p><span className="text-muted-foreground">Telefon:</span> {customerTelefon}</p>}
-                {customerAdress && <p><span className="text-muted-foreground">Adress:</span> {customerAdress}</p>}
-                <p><span className="text-muted-foreground">Giltig till:</span> {validUntil.toLocaleDateString('sv-SE')}</p>
+                <p>
+                  <span className="text-muted-foreground">Till:</span> {customerName}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">E-post:</span> {customerEmail}
+                </p>
+                {customerTelefon && (
+                  <p>
+                    <span className="text-muted-foreground">Telefon:</span> {customerTelefon}
+                  </p>
+                )}
+                {customerAdress && (
+                  <p>
+                    <span className="text-muted-foreground">Adress:</span> {customerAdress}
+                  </p>
+                )}
+                <p>
+                  <span className="text-muted-foreground">Giltig till:</span>{' '}
+                  {validUntil.toLocaleDateString('sv-SE')}
+                </p>
               </div>
 
-              {items.filter(i => i.description).map(item => {
-                const matsTotal = item.materials.reduce((s, m) => s + m.quantity * m.unitPrice, 0);
-                return (
-                  <div key={item.id} className="border rounded-lg p-3 mb-3">
-                    <div className="flex justify-between font-medium text-sm mb-1">
-                      <span>{item.description}</span>
-                      <span>{formatCurrency(getItemTotal(item))}</span>
+              {items
+                .filter((i) => i.description)
+                .map((item) => {
+                  const matsTotal = item.materials.reduce(
+                    (sum, material) => sum + material.quantity * material.unitPrice,
+                    0
+                  );
+                  return (
+                    <div key={item.id} className="border rounded-lg p-3 mb-3">
+                      <div className="flex justify-between font-medium text-sm mb-1">
+                        <span>{item.description}</span>
+                        <span>{formatCurrency(getItemTotal(item))}</span>
+                      </div>
+                      {item.laborPrice > 0 && (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Arbete</span>
+                          <span>{formatCurrency(item.laborPrice)}</span>
+                        </div>
+                      )}
+                      {item.materials
+                        .filter((m) => m.name)
+                        .map((material) => (
+                          <div
+                            key={material.id}
+                            className="flex justify-between text-xs text-muted-foreground pl-3"
+                          >
+                            <span>
+                              {material.quantity} × {material.name}
+                            </span>
+                            <span>{formatCurrency(material.quantity * material.unitPrice)}</span>
+                          </div>
+                        ))}
+                      {matsTotal > 0 && (
+                        <div className="flex justify-between text-xs text-muted-foreground pt-1 pl-3">
+                          <span>Materialsumma</span>
+                          <span>{formatCurrency(matsTotal)}</span>
+                        </div>
+                      )}
                     </div>
-                    {item.laborPrice > 0 && (
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Arbete</span>
-                        <span>{formatCurrency(item.laborPrice)}</span>
-                      </div>
-                    )}
-                    {item.materials.filter(m => m.name).map(m => (
-                      <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-3">
-                        <span>{m.quantity} × {m.name}</span>
-                        <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
+                  );
+                })}
 
               <div className="mt-4 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Moms ({defaultVat}%)</span><span>{formatCurrency(vat)}</span></div>
-                <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total</span><span>{formatCurrency(total)}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Delsumma</span>
+                  <span>{formatCurrency(subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Moms ({defaultVat}%)</span>
+                  <span>{formatCurrency(vat)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg border-t pt-2">
+                  <span>Total</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+              </div>
+
+              <div className="mt-4 border-t pt-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total materialkostnad</span>
+                  <span>{formatCurrency(totalMaterialCost)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total arbetstidskostnad</span>
+                  <span>{formatCurrency(totalLaborCost)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Totalt pris mot kund</span>
+                  <span>{formatCurrency(subtotal)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>Beräknad marginal</span>
+                  <span>{marginPercent.toFixed(1)}%</span>
+                </div>
               </div>
 
               {estimatedTime && (
-                <div className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {estimatedTime}</div>
+                <div className="mt-3 text-sm">
+                  <span className="text-muted-foreground">Beräknad arbetstid:</span> {estimatedTime}
+                </div>
               )}
               {notes && <p className="mt-3 text-sm text-muted-foreground italic">{notes}</p>}
             </CardContent>
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="gap-2" onClick={() => handleSave('draft')} disabled={isPending}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => handleSave('draft')}
+              disabled={isPending}
+            >
               <Save className="h-4 w-4" /> {isEditMode ? 'Spara' : 'Spara utkast'}
             </Button>
-            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={() => handleSave('sent')} disabled={isPending}>
+            <Button
+              className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+              onClick={() => handleSave('sent')}
+              disabled={isPending}
+            >
               <Send className="h-4 w-4" /> {isEditMode ? 'Uppdatera och skicka' : 'Skicka offert'}
             </Button>
           </div>
@@ -399,7 +573,4 @@ export default function QuoteBuilder() {
     </div>
   );
 }
-
-
-
 

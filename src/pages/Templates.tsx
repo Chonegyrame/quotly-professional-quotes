@@ -46,6 +46,8 @@ const emptyMaterial = (): MaterialRow => ({
   name: '',
   quantity: 1,
   unitPrice: 0,
+  purchasePrice: 0,
+  markupPercent: 0,
   unit: 'st',
 });
 
@@ -139,6 +141,8 @@ export default function Templates() {
             name: material.name || '',
             quantity: material.quantity || 1,
             unitPrice: material.unit_price || 0,
+            purchasePrice: material.purchase_price ?? material.unit_price ?? 0,
+            markupPercent: material.markup_percent || 0,
             unit: material.unit || 'st',
           }))
         : [];
@@ -158,6 +162,8 @@ export default function Templates() {
           name: material.name,
           quantity: material.quantity,
           unit_price: material.unitPrice,
+          purchase_price: material.purchasePrice,
+          markup_percent: material.markupPercent,
           unit: material.unit,
         })),
       },
@@ -291,6 +297,7 @@ export default function Templates() {
                       key={material.id}
                       material={material}
                       availableMaterials={filteredMaterials}
+                      pricingMode="detailed"
                       onChange={(updated) => updateMaterialRow(material.id, updated)}
                       onRemove={() => removeMaterialRow(material.id)}
                     />
@@ -379,3 +386,5 @@ export default function Templates() {
     </div>
   );
 }
+
+

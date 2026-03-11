@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from './useCompany';
 
@@ -119,8 +119,8 @@ export function useQuotes() {
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Determine the right status after edit
-      // If previously accepted → set to "revised" (needs customer re-approval)
-      // If sent/opened → reset to "draft" unless re-sending
+      // If previously accepted â†’ set to "revised" (needs customer re-approval)
+      // If sent/opened â†’ reset to "draft" unless re-sending
       // Get current quote to check previous status
       const { data: currentQuote } = await supabase
         .from('quotes')
@@ -132,7 +132,7 @@ export function useQuotes() {
       let finalStatus: string;
 
       if (prevStatus === 'accepted' || prevStatus === 'revised') {
-        // Accepted quotes go to "revised" — customer must re-approve
+        // Accepted quotes go to "revised" â€” customer must re-approve
         finalStatus = input.status === 'sent' ? 'revised' : 'revised';
       } else if (input.status === 'sent') {
         finalStatus = 'sent';
@@ -267,6 +267,8 @@ export function useQuotes() {
               name: material.name,
               quantity: material.quantity,
               unit_price: material.unit_price,
+              purchase_price: material.purchase_price ?? material.unit_price,
+              markup_percent: material.markup_percent ?? 0,
               unit: material.unit,
               sort_order: material.sort_order ?? materialIndex,
             });
@@ -317,5 +319,8 @@ export function usePublicQuote(quoteId: string | undefined) {
     enabled: !!quoteId,
   });
 }
+
+
+
 
 

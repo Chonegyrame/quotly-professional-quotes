@@ -31,7 +31,7 @@ export function useMaterials() {
     queryFn: async () => {
       if (!company) return [];
 
-      const loadMaterials = async () => {
+      const loadAllMaterials = async () => {
         const { data, error } = await supabase
           .from('materials')
           .select('*')
@@ -42,7 +42,7 @@ export function useMaterials() {
         return data ?? [];
       };
 
-      let existingMaterials = await loadMaterials();
+      let allMaterials = await loadAllMaterials();
 
       const starterLookup = new Map<string, { name: string; unit: string }>();
       for (const trade of starterTrades) {
@@ -51,7 +51,10 @@ export function useMaterials() {
         }
       }
 
-      const rowsToFix = existingMaterials.filter((material) => {
+      // Normalize canonical starter naming for active starter rows only.
+      const rowsToFix = allMaterials.filter((material) => {
+        if (material.is_deleted) return false;
+
         const trade = normalizeCategory(material.category);
         if (trade === 'general') return false;
 
@@ -85,11 +88,12 @@ export function useMaterials() {
           })
         );
 
-        existingMaterials = await loadMaterials();
+        allMaterials = await loadAllMaterials();
       }
 
+      // Include both active and hidden starter rows to avoid re-creating removed starters.
       const existingKeys = new Set(
-        existingMaterials.map(
+        allMaterials.map(
           (material) =>
             `${normalizeCategory(material.category)}::${normalizeName(material.name)}`
         )
@@ -105,8 +109,11 @@ export function useMaterials() {
             company_id: company.id,
             name: starter.name,
             unit_price: 0,
+            purchase_price: 0,
+            markup_percent: 0,
             unit: starter.unit,
             category: trade,
+            is_deleted: false,
           }))
       );
 
@@ -116,9 +123,10 @@ export function useMaterials() {
           .insert(missingStarterRows);
 
         if (insertError) throw insertError;
+        allMaterials = await loadAllMaterials();
       }
 
-      return await loadMaterials();
+      return allMaterials.filter((material) => !material.is_deleted);
     },
     enabled: !!company,
   });

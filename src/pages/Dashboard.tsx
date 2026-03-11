@@ -1,8 +1,9 @@
 ﻿import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, FileText, CheckCircle, Send, Pencil } from 'lucide-react';
+import { Plus, FileText, CheckCircle, Send, Pencil, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { QuoteCard } from '@/components/QuoteCard';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, type QuoteStatus, getQuoteTotal, formatCurrency } from '@/data/mockData';
@@ -16,8 +17,15 @@ const topFilters = [
   { label: 'Utkast', value: 'draft', icon: Pencil },
 ] as const;
 
+const normalizeText = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState<DashboardFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const { quotes: dbQuotes, isLoading } = useQuotes();
 
   const hasDbQuotes = dbQuotes.length > 0;
@@ -76,15 +84,20 @@ export default function Dashboard() {
   }, [displayQuotes]);
 
   const filteredQuotes = useMemo(() => {
-    if (activeFilter === 'all') return displayQuotes;
-    if (activeFilter === 'sent') {
-      return displayQuotes.filter((q) => ['sent', 'opened'].includes(q.status));
-    }
-    if (activeFilter === 'accepted') {
-      return displayQuotes.filter((q) => q.status === 'accepted');
-    }
-    return displayQuotes.filter((q) => q.status === 'draft');
-  }, [activeFilter, displayQuotes]);
+    const byStatus =
+      activeFilter === 'all'
+        ? displayQuotes
+        : activeFilter === 'sent'
+          ? displayQuotes.filter((q) => ['sent', 'opened'].includes(q.status))
+          : activeFilter === 'accepted'
+            ? displayQuotes.filter((q) => q.status === 'accepted')
+            : displayQuotes.filter((q) => q.status === 'draft');
+
+    const query = normalizeText(searchQuery.trim());
+    if (!query) return byStatus;
+
+    return byStatus.filter((q) => normalizeText(q.customerName).includes(query));
+  }, [activeFilter, displayQuotes, searchQuery]);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-4xl mx-auto animate-fade-in">
@@ -137,12 +150,22 @@ export default function Dashboard() {
         })}
       </div>
 
-      <Card className="mb-6">
+      <Card className="mb-4">
         <CardContent className="p-4">
           <span className="text-xs text-muted-foreground">Totalt accepterat värde</span>
           <div className="text-3xl font-heading font-bold text-success">{formatCurrency(stats.totalValue)}</div>
         </CardContent>
       </Card>
+
+      <div className="relative mb-6">
+        <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Sök på kundnamn..."
+          className="pl-9"
+        />
+      </div>
 
       {isLoading ? (
         <p className="text-center text-muted-foreground py-8">Laddar offerter...</p>
@@ -155,7 +178,7 @@ export default function Dashboard() {
       ) : (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Inga offerter i denna kategori ännu.
+            Inga offerter matchar din sökning.
           </CardContent>
         </Card>
       )}
