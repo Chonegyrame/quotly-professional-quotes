@@ -1,4 +1,4 @@
-import { Toaster } from "@/components/ui/toaster";
+﻿import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import QuoteDetail from "./pages/QuoteDetail";
 import CustomerView from "./pages/CustomerView";
 import Settings from "./pages/Settings";
 import Analytics from "./pages/Analytics";
+import MaterialAnalytics from "./pages/MaterialAnalytics";
 import Templates from "./pages/Templates";
 import Materials from "./pages/Materials";
 import Auth from "./pages/Auth";
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="/quotes/:id" element={<ProtectedRoute><QuoteDetail /></ProtectedRoute>} />
         <Route path="/quotes/:id/edit" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+        <Route path="/analytics/material" element={<ProtectedRoute><MaterialAnalytics /></ProtectedRoute>} />
         <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
         <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
@@ -89,3 +91,5 @@ const App = () => (
 );
 
 export default App;
+
+

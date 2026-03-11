@@ -1,72 +1,158 @@
-import { useMemo } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, TrendingDown, BarChart3, Target, DollarSign, Percent } from 'lucide-react';
+import { ArrowLeft, TrendingUp, BarChart3, Target, DollarSign, Percent, Package, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useQuotes } from '@/hooks/useQuotes';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-const COLORS = ['hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)', 'hsl(213, 53%, 24%)', 'hsl(0, 84%, 60%)', 'hsl(215, 14%, 45%)'];
+type DateFilter = 'month' | 'threeMonths' | 'year' | 'all';
+
+const DATE_FILTERS: Array<{ key: DateFilter; label: string }> = [
+  { key: 'month', label: 'Den här månaden' },
+  { key: 'threeMonths', label: 'Senaste 3 månaderna' },
+  { key: 'year', label: 'I år' },
+  { key: 'all', label: 'Allt' },
+];
+
+const STATUS_COLORS: Record<string, string> = {
+  accepted: 'hsl(var(--success))',
+  declined: '#ef4444',
+  draft: 'hsl(var(--accent))',
+  sent: 'hsl(213, 53%, 24%)',
+  opened: 'hsl(213, 53%, 24%)',
+};
+
+function getStatusColor(status: string) {
+  return STATUS_COLORS[status.toLowerCase()] || 'hsl(213, 53%, 24%)';
+}
 
 function formatSEK(n: number) {
   return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: 0 }).format(n);
 }
 
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function Analytics() {
   const navigate = useNavigate();
   const { quotes, isLoading } = useQuotes();
+  const [dateFilter, setDateFilter] = useState<DateFilter>('month');
+
+  const filteredQuotes = useMemo(() => {
+    if (!quotes.length) return [];
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfThreeMonths = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+    return quotes.filter((q) => {
+      const createdAt = q.created_at ? new Date(q.created_at) : null;
+      if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
+
+      if (dateFilter === 'month') return createdAt >= startOfMonth;
+      if (dateFilter === 'threeMonths') return createdAt >= startOfThreeMonths;
+      if (dateFilter === 'year') return createdAt >= startOfYear;
+      return true;
+    });
+  }, [quotes, dateFilter]);
 
   const kpis = useMemo(() => {
     if (!quotes.length) return null;
 
-    const accepted = quotes.filter(q => q.status === 'accepted');
-    const sent = quotes.filter(q => ['sent', 'opened', 'accepted', 'declined'].includes(q.status));
+    const sourceQuotes = filteredQuotes;
+    const accepted = sourceQuotes.filter((q) => q.status === 'accepted');
+    const sent = sourceQuotes.filter((q) => ['sent', 'opened', 'accepted', 'declined'].includes(q.status));
     const conversionRate = sent.length > 0 ? (accepted.length / sent.length) * 100 : 0;
 
     const totalRevenue = accepted.reduce((sum, q) => {
       const items = q.quote_items || [];
-      return sum + items.reduce((s: number, i: any) => s + (i.quantity * i.unit_price * (1 + i.vat_rate / 100)), 0);
+      return sum + items.reduce((s: number, i: any) => s + i.quantity * i.unit_price * (1 + i.vat_rate / 100), 0);
     }, 0);
 
-    const avgQuoteValue = quotes.length > 0
-      ? quotes.reduce((sum, q) => {
+    const avgQuoteValue = sourceQuotes.length > 0
+      ? sourceQuotes.reduce((sum, q) => {
           const items = q.quote_items || [];
           return sum + items.reduce((s: number, i: any) => s + i.quantity * i.unit_price, 0);
-        }, 0) / quotes.length
+        }, 0) / sourceQuotes.length
       : 0;
 
-    const pending = quotes.filter(q => ['sent', 'opened'].includes(q.status));
+    const pending = sourceQuotes.filter((q) => ['sent', 'opened'].includes(q.status));
     const pipelineValue = pending.reduce((sum, q) => {
       const items = q.quote_items || [];
-      return sum + items.reduce((s: number, i: any) => s + (i.quantity * i.unit_price * (1 + i.vat_rate / 100)), 0);
+      return sum + items.reduce((s: number, i: any) => s + i.quantity * i.unit_price * (1 + i.vat_rate / 100), 0);
     }, 0);
 
-    // Status breakdown
-    const statusCounts = quotes.reduce((acc, q) => {
+    const statusCounts = sourceQuotes.reduce((acc, q) => {
       acc[q.status] = (acc[q.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     const statusData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
 
-    // Monthly data (last 6 months)
-    const monthlyData: { month: string; sent: number; accepted: number; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('en', { month: 'short' });
-      const monthQuotes = quotes.filter(q => q.created_at?.startsWith(key));
-      const monthAccepted = monthQuotes.filter(q => q.status === 'accepted');
+    const toMonthlyPoint = (monthDate: Date, showYear: boolean) => {
+      const key = monthKey(monthDate);
+      const monthQuotes = sourceQuotes.filter((q) => q.created_at?.startsWith(key));
+      const monthAccepted = monthQuotes.filter((q) => q.status === 'accepted');
       const rev = monthAccepted.reduce((s, q) => {
         const items = q.quote_items || [];
         return s + items.reduce((ss: number, i: any) => ss + i.quantity * i.unit_price * (1 + i.vat_rate / 100), 0);
       }, 0);
-      monthlyData.push({ month: label, sent: monthQuotes.length, accepted: monthAccepted.length, revenue: rev });
+
+      const label = monthDate.toLocaleDateString('sv-SE', showYear ? { month: 'short', year: '2-digit' } : { month: 'short' });
+      return { month: label, sent: monthQuotes.length, accepted: monthAccepted.length, revenue: rev };
+    };
+
+    let monthlyData: { month: string; sent: number; accepted: number; revenue: number }[] = [];
+
+    if (dateFilter === 'all') {
+      const uniqueKeys = Array.from(
+        new Set(
+          sourceQuotes
+            .map((q) => {
+              const d = q.created_at ? new Date(q.created_at) : null;
+              return d && !Number.isNaN(d.getTime()) ? monthKey(d) : null;
+            })
+            .filter((v): v is string => Boolean(v))
+        )
+      ).sort();
+
+      monthlyData = uniqueKeys.map((key) => {
+        const [year, month] = key.split('-').map(Number);
+        return toMonthlyPoint(new Date(year, month - 1, 1), true);
+      });
+    } else {
+      const now = new Date();
+      const months: Date[] = [];
+
+      if (dateFilter === 'month') {
+        months.push(new Date(now.getFullYear(), now.getMonth(), 1));
+      } else if (dateFilter === 'threeMonths') {
+        for (let i = 2; i >= 0; i--) {
+          months.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+        }
+      } else if (dateFilter === 'year') {
+        for (let month = 0; month <= now.getMonth(); month++) {
+          months.push(new Date(now.getFullYear(), month, 1));
+        }
+      }
+
+      monthlyData = months.map((monthDate) => toMonthlyPoint(monthDate, false));
     }
 
-    return { conversionRate, totalRevenue, avgQuoteValue, pipelineValue, statusData, monthlyData, totalQuotes: quotes.length, acceptedCount: accepted.length };
-  }, [quotes]);
+    return {
+      conversionRate,
+      totalRevenue,
+      avgQuoteValue,
+      pipelineValue,
+      statusData,
+      monthlyData,
+      totalQuotes: sourceQuotes.length,
+      acceptedCount: accepted.length,
+    };
+  }, [quotes, filteredQuotes, dateFilter]);
 
   if (isLoading) {
     return <div className="p-6 text-center text-muted-foreground">Loading analytics...</div>;
@@ -91,7 +177,20 @@ export default function Analytics() {
         <h1 className="text-xl font-heading font-bold">Business Analytics</h1>
       </div>
 
-      {/* KPI Cards */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {DATE_FILTERS.map((filter) => (
+          <Button
+            key={filter.key}
+            size="sm"
+            variant={dateFilter === filter.key ? 'default' : 'outline'}
+            onClick={() => setDateFilter(filter.key)}
+            className={dateFilter === filter.key ? 'bg-accent text-accent-foreground hover:bg-accent/90' : ''}
+          >
+            {filter.label}
+          </Button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Card>
           <CardContent className="p-4">
@@ -131,7 +230,6 @@ export default function Analytics() {
         </Card>
       </div>
 
-      {/* Monthly chart */}
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Monthly Overview</CardTitle></CardHeader>
         <CardContent>
@@ -149,24 +247,64 @@ export default function Analytics() {
         </CardContent>
       </Card>
 
-      {/* Status breakdown */}
+      <button
+        type="button"
+        onClick={() => navigate('/analytics/material')}
+        className="mb-6 w-full text-left"
+      >
+        <Card className="transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4 flex items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Package className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold">Materialanalys</p>
+                <p className="text-sm text-muted-foreground">Se marginaler, topplista och kostnadsutveckling</p>
+              </div>
+            </div>
+            <ArrowRight className="h-5 w-5 shrink-0 text-accent" />
+          </CardContent>
+        </Card>
+      </button>
       <Card>
         <CardHeader><CardTitle className="text-lg">Quote Status Breakdown</CardTitle></CardHeader>
         <CardContent>
           <div className="h-48 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={kpis.statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, value }) => `${name}: ${value}`}>
-                  {kpis.statusData.map((_, idx) => (
-                    <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                <Pie
+                  data={kpis.statusData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={44}
+                  outerRadius={70}
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {kpis.statusData.map((entry) => (
+                    <Cell key={entry.name} fill={getStatusColor(String(entry.name))} />
                   ))}
                 </Pie>
+                <text x="50%" y="48%" textAnchor="middle" className="fill-foreground text-[24px] font-bold">
+                  {kpis.totalQuotes}
+                </text>
+                <text x="50%" y="62%" textAnchor="middle" className="fill-muted-foreground text-[12px]">
+                  Totalt
+                </text>
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
+
     </div>
   );
 }
+
+
+
+
+

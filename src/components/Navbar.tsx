@@ -29,7 +29,7 @@ export function Navbar() {
           {navItems.map((item) => (
             <Link key={item.to} to={item.to}>
               <Button
-                variant={location.pathname === item.to ? 'secondary' : 'ghost'}
+                variant={location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(`${item.to}/`)) ? 'secondary' : 'ghost'}
                 size="sm"
                 className="gap-2"
               >
@@ -55,7 +55,7 @@ export function Navbar() {
           <Link key={item.to} to={item.to} className="flex-1">
             <button className={cn(
               'flex w-full flex-col items-center gap-0.5 py-2 text-xs',
-              location.pathname === item.to ? 'text-primary font-semibold' : 'text-muted-foreground'
+              location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(`${item.to}/`)) ? 'text-primary font-semibold' : 'text-muted-foreground'
             )}>
               <item.icon className="h-5 w-5" />
               {item.label}
@@ -73,3 +73,4 @@ export function Navbar() {
     </>
   );
 }
+
