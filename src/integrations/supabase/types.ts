@@ -289,56 +289,77 @@ export type Database = {
       quotes: {
         Row: {
           accepted_at: string | null
+          actual_hours: number | null
+          ai_suggestions: Json | null
           company_id: string
+          completed_at: string | null
           created_at: string
           customer_address: string | null
           customer_email: string
           customer_name: string
           customer_phone: string | null
           discount_amount: number | null
-          estimated_time: string | null
+          estimated_days: number | null
+          estimated_hours: number | null
           id: string
+          keywords: string[] | null
+          material_fingerprint: string[] | null
           notes: string | null
           opened_at: string | null
           quote_number: string
           sent_at: string | null
           status: string
+          trade: string
           valid_until: string | null
         }
         Insert: {
           accepted_at?: string | null
+          actual_hours?: number | null
+          ai_suggestions?: Json | null
           company_id: string
+          completed_at?: string | null
           created_at?: string
           customer_address?: string | null
           customer_email?: string
           customer_name: string
           customer_phone?: string | null
           discount_amount?: number | null
-          estimated_time?: string | null
+          estimated_days?: number | null
+          estimated_hours?: number | null
           id?: string
+          keywords?: string[] | null
+          material_fingerprint?: string[] | null
           notes?: string | null
           opened_at?: string | null
           quote_number: string
           sent_at?: string | null
           status?: string
+          trade?: string
           valid_until?: string | null
         }
         Update: {
           accepted_at?: string | null
+          actual_hours?: number | null
+          ai_suggestions?: Json | null
           company_id?: string
+          completed_at?: string | null
           created_at?: string
           customer_address?: string | null
           customer_email?: string
           customer_name?: string
           customer_phone?: string | null
           discount_amount?: number | null
-          estimated_time?: string | null
+          estimated_days?: number | null
+          estimated_hours?: number | null
           id?: string
+          keywords?: string[] | null
+          material_fingerprint?: string[] | null
           notes?: string | null
           opened_at?: string | null
           quote_number?: string
           sent_at?: string | null
           status?: string
+          trade?: string
           valid_until?: string | null
         }
         Relationships: [
@@ -350,6 +371,105 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_trade_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          trade: string
+          total_quotes: number
+          common_materials: Json
+          typical_labor_min: number
+          typical_labor_max: number
+          typical_labor_avg: number
+          last_computed_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          trade: string
+          total_quotes?: number
+          common_materials?: Json
+          typical_labor_min?: number
+          typical_labor_max?: number
+          typical_labor_avg?: number
+          last_computed_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          trade?: string
+          total_quotes?: number
+          common_materials?: Json
+          typical_labor_min?: number
+          typical_labor_max?: number
+          typical_labor_avg?: number
+          last_computed_at?: string
+        }
+        Relationships: []
+      }
+      user_job_patterns: {
+        Row: {
+          id: string
+          user_id: string
+          trade: string
+          pattern_keywords: string[]
+          occurrence_count: number
+          common_materials: Json
+          typical_line_items: Json
+          avg_total_labor: number
+          last_updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          trade: string
+          pattern_keywords?: string[]
+          occurrence_count?: number
+          common_materials?: Json
+          typical_line_items?: Json
+          avg_total_labor?: number
+          last_updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          trade?: string
+          pattern_keywords?: string[]
+          occurrence_count?: number
+          common_materials?: Json
+          typical_line_items?: Json
+          avg_total_labor?: number
+          last_updated_at?: string
+        }
+        Relationships: []
+      }
+      user_material_learnings: {
+        Row: {
+          id: string
+          user_id: string
+          trade: string
+          job_keywords: string[]
+          material_name: string
+          added_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          trade: string
+          job_keywords?: string[]
+          material_name: string
+          added_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          trade?: string
+          job_keywords?: string[]
+          material_name?: string
+          added_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

@@ -1,10 +1,11 @@
 ﻿import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, FileText, CheckCircle, Send, Pencil, Search } from 'lucide-react';
+import { Plus, FileText, CheckCircle, Send, Pencil, Search, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { QuoteCard } from '@/components/QuoteCard';
+import { AIQuoteModal } from '@/components/AIQuoteModal';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, type QuoteStatus, getQuoteTotal, formatCurrency } from '@/data/mockData';
 
@@ -26,6 +27,7 @@ const normalizeText = (value: string) =>
 export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState<DashboardFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const { quotes: dbQuotes, isLoading } = useQuotes();
 
   const hasDbQuotes = dbQuotes.length > 0;
@@ -108,13 +110,25 @@ export default function Dashboard() {
             {hasDbQuotes ? 'Hantera dina offerter' : 'Exempeldata - skapa din första offert!'}
           </p>
         </div>
-        <Link to="/quotes/new" className="md:hidden">
-          <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
-            <Plus className="h-4 w-4" />
-            Ny offert
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsAIModalOpen(true)}
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            Skapa med AI
           </Button>
-        </Link>
+          <Link to="/quotes/new">
+            <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Plus className="h-4 w-4" />
+              Ny offert
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      <AIQuoteModal open={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {topFilters.map((filter) => {

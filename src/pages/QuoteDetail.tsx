@@ -1,23 +1,32 @@
 ﻿import { useMemo, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send, Loader2, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react';
+import { downloadQuotePdf } from '@/lib/downloadPdf';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { TimelineEvent } from '@/components/TimelineEvent';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
 import { useCompany } from '@/hooks/useCompany';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
+import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE } from '@/lib/emailTemplate';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote } = useQuotes();
+  const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, deleteQuote } = useQuotes();
   const { company } = useCompany();
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [actualHoursInput, setActualHoursInput] = useState<number | ''>('');
 
   const quote = useMemo(() => {
     const dbQ = dbQuotes.find((q: any) => q.id === id);
@@ -31,7 +40,10 @@ export default function QuoteDetail() {
         customerAddress: dbQ.customer_address || '',
         status: dbQ.status as any,
         notes: dbQ.notes || '',
-        estimatedTime: (dbQ as any).estimated_time || '',
+        estimatedDays: (dbQ as any).estimated_days ?? null,
+        estimatedHours: (dbQ as any).estimated_hours ?? null,
+        actualHours: (dbQ as any).actual_hours ?? null,
+        completedAt: (dbQ as any).completed_at ?? null,
         validUntil: dbQ.valid_until || '',
         createdAt: dbQ.created_at,
         sentAt: dbQ.sent_at,
@@ -87,7 +99,8 @@ export default function QuoteDetail() {
 
   const total = subtotal + vat;
   const isLocked = ['declined', 'expired'].includes(quote.status);
-  const canEdit = !isLocked;
+  const isCompleted = quote.status === 'completed';
+  const canEdit = !isLocked && !isCompleted;
   const reminderDue = isReminderDue(quote);
   const publicLink = `${window.location.origin}/q/${quote.id}`;
 
@@ -96,8 +109,29 @@ export default function QuoteDetail() {
     toast.success('Länk kopierad');
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadQuotePdf(quote.id, quote.customerName);
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte ladda ner PDF');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    try {
+      await completeQuote.mutateAsync({
+        quoteId: quote.id,
+        actualHours: actualHoursInput !== '' ? Number(actualHoursInput) : null,
+      });
+      setCompleteModalOpen(false);
+      setActualHoursInput('');
+      toast.success('Jobb markerat som slutfört');
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte markera jobbet som slutfört');
+    }
   };
 
   const handleDuplicate = async () => {
@@ -110,6 +144,18 @@ export default function QuoteDetail() {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deleteQuote.mutateAsync({ quoteId: quote.id });
+      toast.success('Offert borttagen');
+      navigate('/');
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte ta bort offerten');
+    }
+  };
+
+  const canDelete = !['accepted', 'completed', 'revised'].includes(quote.status);
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
       <div className="flex items-center gap-3 mb-4 no-print">
@@ -117,8 +163,8 @@ export default function QuoteDetail() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-xl font-heading font-bold">{quote.quoteNumber}</h1>
-          <p className="text-sm text-muted-foreground">{quote.customerName}</p>
+          <h1 className="text-xl font-heading font-bold">{quote.customerName}</h1>
+          <p className="text-sm text-muted-foreground">{formatDate(quote.createdAt)}</p>
         </div>
         <StatusBadge status={quote.status} />
       </div>
@@ -137,36 +183,53 @@ export default function QuoteDetail() {
             <Send className="h-3.5 w-3.5" /> Skicka
           </Button>
         )}
+        {quote.status === 'revised' && (
+          <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setSendModalOpen(true)}>
+            <Send className="h-3.5 w-3.5" /> Skicka igen
+          </Button>
+        )}
+        {quote.status === 'accepted' && (
+          <Button size="sm" className="gap-1.5 shrink-0 bg-green-600 hover:bg-green-700 text-white" onClick={() => setCompleteModalOpen(true)}>
+            <CheckCircle className="h-3.5 w-3.5" /> Markera som slutförd
+          </Button>
+        )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Kopiera länk
         </Button>
-        <Link to={`/q/${quote.id}`} target="_blank">
-          <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
-            <ExternalLink className="h-3.5 w-3.5" /> Offert kundvy
-          </Button>
-        </Link>
         {canEdit && !isLocked && (
           <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
             <Edit className="h-3.5 w-3.5" /> Redigera
           </Button>
         )}
-        {isLocked && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 shrink-0 opacity-50 cursor-not-allowed"
-            disabled
-            title={`Kan inte redigera ${quote.status} offerter`}
-          >
-            <Edit className="h-3.5 w-3.5" /> Redigera
-          </Button>
-        )}
-        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handlePrint}>
-          <Download className="h-3.5 w-3.5" /> PDF
+        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+          {downloadingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          {downloadingPdf ? 'Genererar...' : 'PDF'}
         </Button>
-        <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
-          <CopyPlus className="h-3.5 w-3.5" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicera'}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="shrink-0 px-2">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild>
+              <a href={`/q/${quote.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 cursor-pointer">
+                <ExternalLink className="h-4 w-4" /> Offert kundvy
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
+              <CopyPlus className="h-4 w-4" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicera'}
+            </DropdownMenuItem>
+            {canDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="gap-2 cursor-pointer text-destructive focus:text-destructive" onClick={handleDelete} disabled={deleteQuote.isPending}>
+                  <Trash2 className="h-4 w-4" /> Ta bort offert
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="hidden print-only mb-6">
@@ -185,7 +248,7 @@ export default function QuoteDetail() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-heading font-bold">OFFERT</h1>
-            <p className="text-lg mt-1">{quote.quoteNumber}</p>
+            <p className="text-lg mt-1">{quote.customerName}</p>
           </div>
           <div className="text-right text-sm">
             <p>Datum: {formatDate(quote.createdAt)}</p>
@@ -286,8 +349,12 @@ export default function QuoteDetail() {
             </div>
           </div>
 
-          {(quote as any).estimatedTime && (
-            <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimatedTime}</p>
+          {((quote as any).estimatedDays || (quote as any).estimatedHours) && (
+            <p className="mt-3 text-sm"><span className="text-muted-foreground">Beräknad arbetstid:</span>{' '}
+              {[
+                (quote as any).estimatedDays > 0 ? `${(quote as any).estimatedDays} dagar` : null,
+                (quote as any).estimatedHours > 0 ? `${(quote as any).estimatedHours} timmar` : null,
+              ].filter(Boolean).join(', ')}</p>
           )}
           {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           {quote.validUntil && <p className="mt-2 text-xs text-muted-foreground no-print">Giltig till: {formatDate(quote.validUntil)}</p>}
@@ -307,14 +374,74 @@ export default function QuoteDetail() {
         open={sendModalOpen}
         onOpenChange={setSendModalOpen}
         customerEmail={quote.customerEmail}
-        quoteNumber={quote.quoteNumber}
+        customerName={quote.customerName}
         quoteId={quote.id}
         total={formatCurrency(total)}
         validUntil={quote.validUntil ? formatDate(quote.validUntil) : ''}
+        defaultMessage={resolveEmailTemplate(
+          company?.email_template || DEFAULT_EMAIL_TEMPLATE,
+          {
+            customer_name: quote.customerName,
+            company_name: company?.name || '',
+            valid_until: quote.validUntil ? formatDate(quote.validUntil) : '',
+          }
+        )}
         onSentSuccess={async () => {
-          await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
+          if (quote.status === 'revised') {
+            await resendQuote.mutateAsync({ quoteId: quote.id });
+          } else {
+            await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
+          }
         }}
       />
+
+      <Dialog open={completeModalOpen} onOpenChange={setCompleteModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Markera jobb som slutfört</DialogTitle>
+            <DialogDescription>
+              Fyll i faktisk arbetstid för att förbättra framtida estimat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {((quote as any).estimatedDays || (quote as any).estimatedHours) && (
+              <div className="rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Uppskattad arbetstid: </span>
+                {[
+                  (quote as any).estimatedDays > 0 ? `${(quote as any).estimatedDays} dagar` : null,
+                  (quote as any).estimatedHours > 0 ? `${(quote as any).estimatedHours} timmar` : null,
+                ].filter(Boolean).join(', ')}
+              </div>
+            )}
+            {!(quote as any).estimatedDays && !(quote as any).estimatedHours && (
+              <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                Ingen uppskattning angiven
+              </div>
+            )}
+            <div>
+              <Label htmlFor="actual-hours">Faktisk arbetstid (timmar)</Label>
+              <Input
+                id="actual-hours"
+                type="number"
+                min="0"
+                placeholder="t.ex. 8"
+                value={actualHoursInput}
+                onChange={(e) => setActualHoursInput(e.target.value === '' ? '' : Number(e.target.value))}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={() => setCompleteModalOpen(false)} disabled={completeQuote.isPending}>
+                Avbryt
+              </Button>
+              <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2" onClick={handleComplete} disabled={completeQuote.isPending}>
+                {completeQuote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Slutför jobb
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

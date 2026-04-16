@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { useTemplates } from '@/hooks/useTemplates';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
+import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE } from '@/lib/emailTemplate';
 
 const steps = ['Kund', 'Arbetsrader', 'Förhandsgranska'];
 
@@ -31,6 +32,7 @@ const emptyItem = (): LineItem => ({
 
 export default function QuoteBuilder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: editId } = useParams();
   const isEditMode = !!editId;
   const existingQuote = useQuote(editId);
@@ -42,6 +44,10 @@ export default function QuoteBuilder() {
   const [initialized, setInitialized] = useState(false);
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
+  const [trade, setTrade] = useState<string>('general');
+  const [aiKeywords, setAiKeywords] = useState<string[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
+  const isAiQuote = !!aiSuggestions;
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -53,7 +59,8 @@ export default function QuoteBuilder() {
 
   const [items, setItems] = useState<LineItem[]>([emptyItem()]);
   const [notes, setNotes] = useState('');
-  const [estimatedTime, setEstimatedTime] = useState('');
+  const [estimatedDays, setEstimatedDays] = useState<number | ''>('');
+  const [estimatedHours, setEstimatedHours] = useState<number | ''>('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
 
   useEffect(() => {
@@ -63,7 +70,9 @@ export default function QuoteBuilder() {
       setCustomerTelefon(existingQuote.customer_phone || '');
       setCustomerAdress(existingQuote.customer_address || '');
       setNotes(existingQuote.notes || '');
-      setEstimatedTime((existingQuote as any).estimated_time || '');
+      setEstimatedDays((existingQuote as any).estimated_days ?? '');
+      setEstimatedHours((existingQuote as any).estimated_hours ?? '');
+      if ((existingQuote as any).trade) setTrade((existingQuote as any).trade);
 
       if (existingQuote.valid_until) {
         const validDate = new Date(existingQuote.valid_until);
@@ -95,6 +104,37 @@ export default function QuoteBuilder() {
       setInitialized(true);
     }
   }, [isEditMode, existingQuote, initialized]);
+
+  // AI pre-fill: runs when navigated from AIQuoteModal with generated data
+  useEffect(() => {
+    const aiData = location.state?.aiData;
+    if (!isEditMode && aiData && !initialized) {
+      if (location.state?.trade) setTrade(location.state.trade);
+      if (Array.isArray(aiData.keywords) && aiData.keywords.length > 0) setAiKeywords(aiData.keywords);
+      // Store the raw AI response for later diffing
+      setAiSuggestions(aiData);
+      setCustomerName(aiData.customer_name || '');
+      setCustomerAdress(aiData.customer_address || '');
+      setNotes(aiData.notes || '');
+      const mapped = (aiData.items || []).map((item: any, idx: number) => ({
+        id: Date.now().toString() + idx,
+        description: item.description,
+        laborPrice: item.labor_price,
+        includeVat: item.include_vat ?? true,
+        materials: (item.materials || []).map((m: any, mi: number) => ({
+          id: Date.now().toString() + idx + '-' + mi,
+          name: m.name,
+          quantity: m.quantity,
+          unitPrice: m.unit_price,
+          purchasePrice: m.purchase_price,
+          markupPercent: m.markup_percent,
+          unit: m.unit || 'st',
+        })),
+      }));
+      if (mapped.length > 0) setItems(mapped);
+      setInitialized(true);
+    }
+  }, [location.state, isEditMode, initialized]);
 
   const addItem = () => setItems([...items, emptyItem()]);
   const removeItem = (id: string) => {
@@ -180,9 +220,13 @@ export default function QuoteBuilder() {
         customer_phone: customerTelefon,
         customer_address: customerAdress,
         notes,
-        estimated_time: estimatedTime || '',
+        estimated_days: estimatedDays !== '' ? Number(estimatedDays) : null,
+        estimated_hours: estimatedHours !== '' ? Number(estimatedHours) : null,
         valid_until: validUntil.toISOString().split('T')[0],
         status: effectiveStatus,
+        trade: trade || 'general',
+        keywords: aiKeywords.length > 0 ? aiKeywords : undefined,
+        ai_suggestions: aiSuggestions || undefined,
         items: quoteItems.map((qi) => ({
           description: qi.description,
           quantity: qi.quantity,
@@ -229,6 +273,19 @@ export default function QuoteBuilder() {
         });
         if (materialsToInsert.length > 0) {
           await supabase.from('quote_item_materials').insert(materialsToInsert);
+        }
+      }
+
+      // Fire-and-forget keyword extraction for manual quotes
+      if (!isAiQuote) {
+        const descriptionTexts = items
+          .filter((i) => i.description.trim())
+          .map((i) => i.description.trim());
+        const textBlob = [...descriptionTexts, notes].filter(Boolean).join('\n');
+        if (textBlob.trim()) {
+          supabase.functions.invoke('extract-keywords', {
+            body: { quote_id: quoteId, text: textBlob, trade },
+          }).catch(() => { /* silent — keyword extraction is non-critical */ });
         }
       }
 
@@ -308,6 +365,27 @@ export default function QuoteBuilder() {
                 className="mt-1"
               />
             </div>
+            <div>
+              <Label>Bransch</Label>
+              <div className="flex gap-2 mt-1">
+                {[
+                  { value: 'bygg', label: 'Bygg' },
+                  { value: 'el', label: 'El' },
+                  { value: 'vvs', label: 'VVS' },
+                  { value: 'general', label: 'Allmänt' },
+                ].map((t) => (
+                  <Button
+                    key={t.value}
+                    type="button"
+                    variant={trade === t.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setTrade(t.value)}
+                  >
+                    {t.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
             <Button
               className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
               disabled={!canProceedStep0}
@@ -344,12 +422,27 @@ export default function QuoteBuilder() {
             <CardContent className="p-4 space-y-3">
               <div>
                 <Label>Beräknad arbetstid (valfritt)</Label>
-                <Input
-                  placeholder="t.ex. 2 dagar, 3-4 timmar"
-                  value={estimatedTime}
-                  onChange={(e) => setEstimatedTime(e.target.value)}
-                  className="mt-1"
-                />
+                <div className="mt-1 flex gap-2">
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="Dagar"
+                      value={estimatedDays}
+                      onChange={(e) => setEstimatedDays(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="23"
+                      placeholder="Timmar"
+                      value={estimatedHours}
+                      onChange={(e) => setEstimatedHours(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                </div>
               </div>
               <div>
                 <Label>Noteringar (valfritt)</Label>
@@ -526,9 +619,13 @@ export default function QuoteBuilder() {
                 </div>
               </div>
 
-              {estimatedTime && (
+              {(estimatedDays !== '' || estimatedHours !== '') && (
                 <div className="mt-3 text-sm">
-                  <span className="text-muted-foreground">Beräknad arbetstid:</span> {estimatedTime}
+                  <span className="text-muted-foreground">Beräknad arbetstid:</span>{' '}
+                  {[
+                    estimatedDays !== '' && estimatedDays > 0 ? `${estimatedDays} dagar` : null,
+                    estimatedHours !== '' && estimatedHours > 0 ? `${estimatedHours} timmar` : null,
+                  ].filter(Boolean).join(', ')}
                 </div>
               )}
               {notes && <p className="mt-3 text-sm text-muted-foreground italic">{notes}</p>}
@@ -561,10 +658,18 @@ export default function QuoteBuilder() {
           if (!open) navigate(savedQuoteId ? `/quotes/${savedQuoteId}` : '/');
         }}
         customerEmail={customerEmail}
-        quoteNumber=""
+        customerName={customerName}
         quoteId={savedQuoteId || ''}
         total={formatCurrency(total)}
         validUntil={validUntil.toLocaleDateString('sv-SE')}
+        defaultMessage={resolveEmailTemplate(
+          company?.email_template || DEFAULT_EMAIL_TEMPLATE,
+          {
+            customer_name: customerName,
+            company_name: company?.name || '',
+            valid_until: validUntil.toLocaleDateString('sv-SE'),
+          }
+        )}
         onSentSuccess={async () => {
           if (!savedQuoteId) return;
           await updateQuoteStatus.mutateAsync({ quoteId: savedQuoteId, status: 'sent' });

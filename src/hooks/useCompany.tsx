@@ -14,6 +14,7 @@ export interface Company {
   bankgiro: string;
   default_vat: number;
   default_validity_days: number;
+  email_template: string | null;
 }
 
 export function useCompany() {

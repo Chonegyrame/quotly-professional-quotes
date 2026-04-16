@@ -1,12 +1,14 @@
 ﻿import { useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { Check, FileText, RefreshCw, X } from 'lucide-react';
+import { Check, FileText, RefreshCw, X, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { usePublicQuote } from '@/hooks/useQuotes';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency, formatDate } from '@/data/mockData';
+import { downloadQuotePdf } from '@/lib/downloadPdf';
+import { toast } from 'sonner';
 
 export default function CustomerView() {
   const { id } = useParams();
@@ -14,6 +16,19 @@ export default function CustomerView() {
   const [responded, setResponded] = useState(false);
   const [responseType, setResponseType] = useState<'accepted' | 'declined'>('accepted');
   const [message, setMessage] = useState('');
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!quote) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadQuotePdf(quote.id, quote.customer_name);
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte ladda ner PDF');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const isRevised = quote?.status === 'revised';
   const isAlreadyAccepted = quote?.status === 'accepted';
@@ -180,14 +195,14 @@ export default function CustomerView() {
           <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary mx-auto mb-3">
             <FileText className="h-7 w-7 text-primary-foreground" />
           </div>
-          <h2 className="font-heading font-bold text-lg">Offert {quote.quote_number}</h2>
+          <h2 className="font-heading font-bold text-lg">Offert</h2>
         </div>
 
         <Card className="mb-4">
           <CardContent className="p-4">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h1 className="font-heading font-bold text-lg">Offert {quote.quote_number}</h1>
+                <h1 className="font-heading font-bold text-lg">Offert</h1>
                 <p className="text-sm text-muted-foreground">Till: {quote.customer_name}</p>
               </div>
               <div className="text-right text-xs text-muted-foreground">
@@ -239,9 +254,24 @@ export default function CustomerView() {
               </div>
             </div>
 
-            {(quote as any).estimated_time && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-3 gap-2 text-muted-foreground"
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+            >
+              {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloadingPdf ? 'Genererar PDF...' : 'Ladda ner som PDF'}
+            </Button>
+
+            {((quote as any).estimated_days || (quote as any).estimated_hours) && (
               <p className="mt-3 text-sm">
-                <span className="text-muted-foreground">Beräknad arbetstid:</span> {(quote as any).estimated_time}
+                <span className="text-muted-foreground">Beräknad arbetstid:</span>{' '}
+                {[
+                  (quote as any).estimated_days > 0 ? `${(quote as any).estimated_days} dagar` : null,
+                  (quote as any).estimated_hours > 0 ? `${(quote as any).estimated_hours} timmar` : null,
+                ].filter(Boolean).join(', ')}
               </p>
             )}
             {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}

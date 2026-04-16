@@ -38,13 +38,7 @@ export function Navbar() {
               </Button>
             </Link>
           ))}
-          <Link to="/quotes/new">
-            <Button size="sm" className="ml-2 gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
-              <Plus className="h-4 w-4" />
-              Ny offert
-            </Button>
-          </Link>
-          <Button variant="ghost" size="sm" className="ml-1 gap-2 text-muted-foreground" onClick={signOut}>
+          <Button variant="ghost" size="sm" className="ml-2 gap-2 text-muted-foreground" onClick={signOut}>
             <LogOut className="h-4 w-4" />
           </Button>
         </nav>

@@ -11,7 +11,17 @@ type SendQuotePayload = {
   quoteId: string;
   recipient: string;
   method: string;
+  attachPdf?: boolean;
+  message?: string;
 };
+
+function textToHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -44,7 +54,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { quoteId, recipient, method }: SendQuotePayload = await req.json();
+    const { quoteId, recipient, method, attachPdf, message }: SendQuotePayload = await req.json();
     if (!quoteId || !recipient || !method) {
       return new Response(
         JSON.stringify({ error: "Invalid payload. Required: quoteId, recipient, method." }),
@@ -89,13 +99,72 @@ serve(async (req: Request) => {
       ? `${siteUrl.replace(/\/$/, "")}/q/${quote.id}`
       : `/q/${quote.id}`;
 
-    const subject = `Offert ${quote.quote_number} ar klar`;
+    const subject = "Din offert ar klar";
+
+    // Build email body: use custom message if provided, otherwise fallback
+    const messageHtml = message?.trim()
+      ? textToHtml(message.trim())
+      : `Hej ${quote.customer_name || ""},<br><br>Din offert ar klar.${
+          quote.valid_until ? `<br><strong>Giltig till:</strong> ${quote.valid_until}` : ""
+        }`;
+
     const html = `
-      <p>Hej ${quote.customer_name || ""},</p>
-      <p>Din offert <strong>${quote.quote_number}</strong> ar klar.</p>
-      ${quote.valid_until ? `<p><strong>Giltig till:</strong> ${quote.valid_until}</p>` : ""}
-      <p><a href="${publicQuoteUrl}">Oppna offerten</a></p>
+      ${messageHtml}
+      <br><br>
+      <a href="${publicQuoteUrl}" style="display:inline-block;padding:10px 24px;background:#1e3a5f;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">Oppna offerten</a>
     `;
+
+    // Optionally generate and attach PDF
+    let attachments: Array<{ filename: string; content: string }> = [];
+    if (attachPdf) {
+      try {
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const pdfRes = await fetch(
+          `${supabaseUrl}/functions/v1/generate-pdf`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${serviceRoleKey}`,
+              apikey: supabaseAnonKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ quoteId }),
+          },
+        );
+        if (pdfRes.ok) {
+          const pdfBuffer = await pdfRes.arrayBuffer();
+          const bytes = new Uint8Array(pdfBuffer);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          attachments = [{
+            filename: `Offert-${(quote.customer_name || "offert").replace(/[^a-zA-Z0-9 _-]/g, "")}.pdf`,
+            content: btoa(binary),
+          }];
+        } else {
+          const errBody = await pdfRes.text().catch(() => "(could not read body)");
+          console.error(`generate-pdf failed: ${pdfRes.status} ${pdfRes.statusText}`, errBody);
+          return new Response(
+            JSON.stringify({
+              error: "Kunde inte generera PDF-bilaga",
+              pdfStatus: pdfRes.status,
+              pdfError: errBody,
+            }),
+            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      } catch (pdfErr) {
+        console.error("PDF attachment generation threw:", pdfErr);
+        return new Response(
+          JSON.stringify({
+            error: "Kunde inte generera PDF-bilaga",
+            details: pdfErr instanceof Error ? pdfErr.message : String(pdfErr),
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -108,6 +177,7 @@ serve(async (req: Request) => {
         to: recipient.trim(),
         subject,
         html,
+        ...(attachments.length > 0 ? { attachments } : {}),
       }),
     });
 
@@ -120,7 +190,7 @@ serve(async (req: Request) => {
     }
 
     if (!resendRes.ok) {
-      const message =
+      const errMsg =
         typeof resendBody === "object" &&
         resendBody !== null &&
         "message" in resendBody
@@ -129,7 +199,7 @@ serve(async (req: Request) => {
 
       return new Response(
         JSON.stringify({
-          error: message,
+          error: errMsg,
           status: resendRes.status,
           statusText: resendRes.statusText,
           resend: resendBody,
@@ -147,10 +217,10 @@ serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("Unexpected error while sending quote", error);
-    const message = error instanceof Error ? error.message : String(error);
+    const errMessage = error instanceof Error ? error.message : String(error);
 
     return new Response(
-      JSON.stringify({ error: "Unexpected error while sending quote", message }),
+      JSON.stringify({ error: "Unexpected error while sending quote", message: errMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

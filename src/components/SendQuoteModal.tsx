@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Mail, Phone, Send, Loader2 } from 'lucide-react';
+import { Mail, Phone, Send, Loader2, Paperclip } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -11,10 +13,11 @@ interface SendQuoteModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   customerEmail: string;
-  quoteNumber: string;
+  customerName: string;
   quoteId: string;
   total: string;
   validUntil: string;
+  defaultMessage?: string;
   onSentSuccess?: () => Promise<void> | void;
 }
 
@@ -27,16 +30,19 @@ function detectMethod(value: string): 'email' | 'phone' | null {
   return null;
 }
 
-export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber, quoteId, total, validUntil, onSentSuccess }: SendQuoteModalProps) {
+export function SendQuoteModal({ open, onOpenChange, customerEmail, customerName, quoteId, total, validUntil, defaultMessage, onSentSuccess }: SendQuoteModalProps) {
   const [recipient, setRecipient] = useState(customerEmail);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [attachPdf, setAttachPdf] = useState(true);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setRecipient(customerEmail || '');
+    setMessage(defaultMessage || '');
     setError('');
-  }, [open, customerEmail]);
+  }, [open, customerEmail, defaultMessage]);
 
   const method = detectMethod(recipient);
 
@@ -55,6 +61,8 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
           quoteId,
           recipient: recipient.trim(),
           method: method === 'phone' ? 'sms' : 'email',
+          attachPdf: method === 'email' ? attachPdf : false,
+          message: message.trim() || undefined,
         },
       });
 
@@ -89,7 +97,7 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />
-            Skicka offert {quoteNumber}
+            Skicka offert till {customerName}
           </DialogTitle>
           <DialogDescription>
             Ange kundens e-postadress eller telefonnummer for att skicka offerten.
@@ -141,6 +149,37 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, quoteNumber,
               <span className="font-medium">{validUntil}</span>
             </div>
           </div>
+
+          <div>
+            <Label htmlFor="send-message" className="text-muted-foreground text-xs">
+              Meddelande
+            </Label>
+            <Textarea
+              id="send-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={5}
+              className="mt-1 text-sm"
+              placeholder="Skriv ett meddelande till kunden..."
+            />
+            <p className="text-muted-foreground text-xs mt-1">
+              En länk till offerten bifogas alltid automatiskt.
+            </p>
+          </div>
+
+          {method !== 'phone' && (
+            <div className="flex items-center gap-2.5">
+              <Checkbox
+                id="attach-pdf"
+                checked={attachPdf}
+                onCheckedChange={(checked) => setAttachPdf(!!checked)}
+              />
+              <Label htmlFor="attach-pdf" className="text-sm cursor-pointer flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                Bifoga PDF som bilaga
+              </Label>
+            </div>
+          )}
 
           <Button
             className="w-full gap-2"

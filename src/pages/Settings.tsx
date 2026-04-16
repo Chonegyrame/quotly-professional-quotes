@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from 'react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Save, Upload, ImageIcon, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,11 +7,44 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useCompany } from '@/hooks/useCompany';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+function compressLogoImage(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxH = 300;
+      const maxW = 600;
+      const scaleH = img.height > maxH ? maxH / img.height : 1;
+      const scaleW = img.width > maxW ? maxW / img.width : 1;
+      const scale = Math.min(scaleH, scaleW);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Canvas not supported'));
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Compression failed'));
+        },
+        'image/jpeg',
+        0.88,
+      );
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 export default function Settings() {
   const navigate = useNavigate();
   const { company, updateCompany } = useCompany();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [orgNumber, setOrgNumber] = useState('');
@@ -24,6 +57,8 @@ export default function Settings() {
   const [emailTemplate, setEmailTemplate] = useState(
     'Hej {customer_name},\n\nHär är din offert via länken nedan.\n\nVänliga hälsningar,\n{company_name}'
   );
+  const [logoUrl, setLogoUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     if (company) {
@@ -35,8 +70,77 @@ export default function Settings() {
       setBankgiro(company.bankgiro || '');
       setDefaultVat(company.default_vat);
       setDefaultValidityDays(company.default_validity_days);
+      setLogoUrl(company.logo_url || '');
+      setEmailTemplate(company.email_template || 'Hej {customer_name},\n\nHär är din offert via länken nedan.\n\nVänliga hälsningar,\n{company_name}');
     }
   }, [company]);
+
+  // Paste support — Ctrl+V anywhere on the page
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) handleLogoUpload(file);
+          break;
+        }
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [company]);
+
+  const handleLogoUpload = async (file: File) => {
+    if (!company) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Välj en bildfil (JPG, PNG, etc.)');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Filen är för stor (max 10MB)');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const compressed = await compressLogoImage(file);
+      const path = `${company.id}/logo.jpg`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('company-logos')
+        .upload(path, compressed, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('company-logos')
+        .getPublicUrl(path);
+
+      await updateCompany.mutateAsync({
+        id: company.id,
+        logo_url: publicUrl,
+      });
+
+      // Add cache-busting only for the on-screen preview so the new image loads immediately
+      setLogoUrl(`${publicUrl}?t=${Date.now()}`);
+      toast.success('Logotyp uppladdad!');
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte ladda upp logotyp');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleLogoUpload(file);
+    e.target.value = '';
+  };
 
   const handleSave = async () => {
     if (!company) return;
@@ -51,6 +155,7 @@ export default function Settings() {
         bankgiro,
         default_vat: defaultVat,
         default_validity_days: defaultValidityDays,
+        email_template: emailTemplate,
       });
       toast.success('Inställningar sparade');
     } catch (err: any) {
@@ -68,6 +173,52 @@ export default function Settings() {
       </div>
 
       <div className="space-y-4">
+
+        {/* Logo upload */}
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Företagslogotyp</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-5">
+              <div className="h-20 w-36 rounded-lg border border-border bg-muted/30 flex items-center justify-center overflow-hidden shrink-0">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="Logotyp"
+                    className="h-full w-full object-contain p-1"
+                  />
+                ) : (
+                  <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                >
+                  {uploadingLogo
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Upload className="h-4 w-4" />}
+                  {uploadingLogo ? 'Laddar upp...' : 'Välj bild'}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  JPG eller PNG, max 10MB.<br />
+                  Du kan också klistra in en bild med <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">Ctrl+V</kbd>
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader><CardTitle className="text-lg">Företagsinformation</CardTitle></CardHeader>
           <CardContent className="space-y-4">

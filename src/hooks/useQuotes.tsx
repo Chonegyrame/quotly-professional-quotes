@@ -28,9 +28,13 @@ export function useQuotes() {
       customer_phone?: string;
       customer_address?: string;
       notes?: string;
-      estimated_time?: string;
+      estimated_days?: number | null;
+      estimated_hours?: number | null;
       valid_until?: string;
       status?: string;
+      trade?: string;
+      keywords?: string[];
+      ai_suggestions?: any;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Get next quote number
@@ -48,9 +52,13 @@ export function useQuotes() {
           customer_phone: input.customer_phone || '',
           customer_address: input.customer_address || '',
           notes: input.notes || '',
-          estimated_time: input.estimated_time || '',
+          estimated_days: input.estimated_days ?? null,
+          estimated_hours: input.estimated_hours ?? null,
           valid_until: input.valid_until,
           status: input.status || 'draft',
+          trade: input.trade || 'general',
+          keywords: input.keywords ?? [],
+          ai_suggestions: input.ai_suggestions ?? null,
           sent_at: input.status === 'sent' ? new Date().toISOString() : null,
         })
         .select()
@@ -101,6 +109,29 @@ export function useQuotes() {
         quote_id: quoteId,
         event_type: status,
       });
+
+      // Trigger background learning recompute when quote is sent
+      if (status === 'sent' && company) {
+        const { data: quote } = await supabase
+          .from('quotes')
+          .select('trade')
+          .eq('id', quoteId)
+          .single();
+
+        if (quote?.trade) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          // Fire and forget — don't await, don't block the user
+          supabase.functions.invoke('recompute-user-profile', {
+            body: {
+              quote_id: quoteId,
+              company_id: company.id,
+              trade: quote.trade,
+            },
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          }).catch(() => { /* silent — learning is non-critical */ });
+        }
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
   });
@@ -113,9 +144,12 @@ export function useQuotes() {
       customer_phone?: string;
       customer_address?: string;
       notes?: string;
-      estimated_time?: string;
+      estimated_days?: number | null;
+      estimated_hours?: number | null;
       valid_until?: string;
       status?: string;
+      trade?: string;
+      keywords?: string[];
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Determine the right status after edit
@@ -146,9 +180,11 @@ export function useQuotes() {
         customer_phone: input.customer_phone || '',
         customer_address: input.customer_address || '',
         notes: input.notes || '',
-        estimated_time: input.estimated_time || '',
+        estimated_days: input.estimated_days ?? null,
+        estimated_hours: input.estimated_hours ?? null,
         valid_until: input.valid_until,
         status: finalStatus,
+        trade: input.trade || 'general',
       };
       if (finalStatus === 'sent') updates.sent_at = new Date().toISOString();
 
@@ -216,7 +252,8 @@ export function useQuotes() {
           customer_phone: sourceQuote.customer_phone || '',
           customer_address: sourceQuote.customer_address || '',
           notes: sourceQuote.notes || '',
-          estimated_time: sourceQuote.estimated_time || '',
+          estimated_days: (sourceQuote as any).estimated_days ?? null,
+          estimated_hours: (sourceQuote as any).estimated_hours ?? null,
           valid_until: validUntil,
           status: 'draft',
           sent_at: null,
@@ -293,7 +330,51 @@ export function useQuotes() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
   });
-  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuote, updateQuoteStatus, duplicateQuote };
+  const deleteQuote = useMutation({
+    mutationFn: async ({ quoteId }: { quoteId: string }) => {
+      const { error } = await supabase.from('quotes').delete().eq('id', quoteId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+  });
+
+  const resendQuote = useMutation({
+    mutationFn: async ({ quoteId }: { quoteId: string }) => {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ sent_at: new Date().toISOString() })
+        .eq('id', quoteId);
+      if (error) throw error;
+
+      await supabase.from('quote_events').insert({
+        quote_id: quoteId,
+        event_type: 'sent',
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+  });
+
+  const completeQuote = useMutation({
+    mutationFn: async ({ quoteId, actualHours }: { quoteId: string; actualHours: number | null }) => {
+      const { error } = await supabase
+        .from('quotes')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          actual_hours: actualHours,
+        })
+        .eq('id', quoteId);
+      if (error) throw error;
+
+      await supabase.from('quote_events').insert({
+        quote_id: quoteId,
+        event_type: 'completed',
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+  });
+
+  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuote, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, deleteQuote };
 }
 
 // Hook to get a single quote by ID (for edit mode)

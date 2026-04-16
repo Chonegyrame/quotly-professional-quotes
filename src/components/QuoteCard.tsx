@@ -16,9 +16,7 @@ export function QuoteCard({ quote }: { quote: Quote }) {
             <span className="font-semibold text-sm truncate">{quote.customerName}</span>
             {reminderDue && <AlertTriangle className="h-4 w-4 text-warning shrink-0" />}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{quote.quoteNumber}</span>
-            <span>·</span>
+          <div className="text-xs text-muted-foreground">
             <span>{formatDate(quote.createdAt)}</span>
           </div>
         </div>

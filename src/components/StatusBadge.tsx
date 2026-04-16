@@ -9,6 +9,7 @@ const statusConfig: Record<QuoteStatus, { label: string; className: string }> = 
   declined: { label: 'Nekad', className: 'bg-destructive/10 text-destructive' },
   expired: { label: 'Utgången', className: 'bg-muted text-muted-foreground' },
   revised: { label: 'Reviderad - väntar godkännande', className: 'bg-warning/10 text-warning' },
+  completed: { label: 'Slutförd', className: 'bg-green-100 text-green-700' },
 };
 
 export function StatusBadge({ status, className }: { status: QuoteStatus; className?: string }) {

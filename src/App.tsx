@@ -16,6 +16,8 @@ import MaterialAnalytics from "./pages/MaterialAnalytics";
 import Templates from "./pages/Templates";
 import Materials from "./pages/Materials";
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import CompanySetup from "./pages/CompanySetup";
 import NotFound from "./pages/NotFound";
 
@@ -42,7 +44,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const isPublicRoute = location.pathname.startsWith('/q/') || location.pathname === '/auth';
+  const isPublicRoute = location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth');
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -59,6 +61,8 @@ function AppRoutes() {
     <AppLayout>
       <Routes>
         <Route path="/auth" element={<Auth />} />
+        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/q/:id" element={<CustomerView />} />
         <Route path="/setup" element={<ProtectedRoute><CompanySetup /></ProtectedRoute>} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

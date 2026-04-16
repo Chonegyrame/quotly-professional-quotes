@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Clock3, FileText, ShieldCheck } from 'lucide-react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { Button } from '@/components/ui/button';
@@ -182,6 +182,16 @@ export default function Auth() {
                       minLength={6}
                     />
                   </div>
+                  {!isSignUp && (
+                    <div className="flex justify-end">
+                      <Link
+                        to="/auth/forgot-password"
+                        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Glömt lösenord?
+                      </Link>
+                    </div>
+                  )}
                   <Button
                     type="submit"
                     disabled={submitting}

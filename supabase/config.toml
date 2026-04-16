@@ -2,3 +2,6 @@ project_id = "cimixmdgcyozwmzboxfk"
 
 [functions.send-quote]
 verify_jwt = false
+
+[functions.generate-pdf]
+verify_jwt = false
