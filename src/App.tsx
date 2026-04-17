@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { AnimatePresence, LayoutGroup } from "framer-motion";
 import { Navbar } from "./components/Navbar";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { useCompany } from "./hooks/useCompany";
@@ -19,6 +20,8 @@ import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import CompanySetup from "./pages/CompanySetup";
+import LandingPage from "./pages/LandingPage";
+import FeatureDetail from "./pages/FeatureDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,9 +45,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function HomeRoute() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+  }
+
+  if (!user) return <LandingPage />;
+
+  return <ProtectedRoute><Dashboard /></ProtectedRoute>;
+}
+
 function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const isPublicRoute = location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth');
+  const { user } = useAuth();
+  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features');
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -57,15 +73,20 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const location = useLocation();
+
   return (
     <AppLayout>
-      <Routes>
+      <LayoutGroup>
+      <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/q/:id" element={<CustomerView />} />
         <Route path="/setup" element={<ProtectedRoute><CompanySetup /></ProtectedRoute>} />
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/" element={<HomeRoute />} />
+        <Route path="/features/:id" element={<FeatureDetail />} />
         <Route path="/quotes/new" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
         <Route path="/quotes/:id" element={<ProtectedRoute><QuoteDetail /></ProtectedRoute>} />
         <Route path="/quotes/:id/edit" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
@@ -76,6 +97,8 @@ function AppRoutes() {
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </AnimatePresence>
+      </LayoutGroup>
     </AppLayout>
   );
 }

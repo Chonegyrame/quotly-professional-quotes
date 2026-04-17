@@ -111,7 +111,7 @@ serve(async (req: Request) => {
     const html = `
       ${messageHtml}
       <br><br>
-      <a href="${publicQuoteUrl}" style="display:inline-block;padding:10px 24px;background:#1e3a5f;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">Oppna offerten</a>
+      <a href="${publicQuoteUrl}" style="display:inline-block;padding:10px 24px;background:#1e3a5f;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">Öppna offerten</a>
     `;
 
     // Optionally generate and attach PDF

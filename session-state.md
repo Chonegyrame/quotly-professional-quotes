@@ -1,44 +1,46 @@
 # Session State
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 Branch: main
 
 ## What was done this session
-- Fixed PDF attachment in send-quote edge function: root cause was JWT verification on generate-pdf blocking internal function-to-function calls. Fixed by adding `verify_jwt = false` for generate-pdf in `supabase/config.toml` and using service role key for the internal fetch. Also improved error handling — PDF failures now return 502 to the frontend instead of silently sending email without attachment.
-- Removed quote numbers (Q-2026-XXX) from all customer-facing surfaces: dashboard cards, quote detail, customer view, PDF, and email. Quote numbers still exist in the database for future Fortnox/bookkeeping integration but are hidden from customers.
-- Removed duplicate orange "Ny offert" button from navbar (kept only the dashboard-level buttons).
-- Fixed quote number race condition: added PostgreSQL advisory lock to `get_next_quote_number` function and a unique constraint on `(company_id, quote_number)`.
-- Built email template system: users can set a default email template in Settings (saved to DB), which pre-fills as an editable message in the SendQuoteModal before sending. The edge function uses the custom message in the email body with an "Öppna offerten" button always appended.
+- Deployed the staged "Öppna offerten" typo fix in `supabase/functions/send-quote/index.ts` to Supabase — the email CTA button now renders correctly in production
+- Swapped the hardcoded legacy HS256 anon key in `src/integrations/supabase/client.ts` for the new publishable key (`sb_publishable_...`) — the project had already been migrated to ES256/ECC signing keys a month ago but the client was still sending the old-format key
+- Diagnosed and fixed a project-wide `UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM` 401 error coming from Supabase's edge function gateway — the gateway rejects ES256 tokens for functions with `verify_jwt = true`, even though the project's JWT signing keys are correctly configured
+- Added `[functions.extract-keywords]` and `[functions.recompute-user-profile]` blocks to `supabase/config.toml` with `verify_jwt = false`, alongside the existing entries for `send-quote` and `generate-pdf`, and redeployed all four functions — chosen as a pragmatic workaround since both new entries have their own internal auth checks (`extract-keywords` lines 71/87, `recompute-user-profile` lines 330/346) so security remains in place at the function level
+- Verified the fix end-to-end: manual quote save now triggers a 200 response from `extract-keywords` and keywords appear populated on the quote row; email send via `send-quote` also returns 200
 
 ## Current state
-- PDF attachment works end-to-end: send quote with "Bifoga PDF" → email arrives with PDF attached
-- Email template textarea shows in SendQuoteModal, pre-filled with resolved template variables ({customer_name}, {company_name}, {valid_until})
-- Settings page can save/load the email template to/from the database
-- Migration for `email_template` column has been pushed to remote database
-- send-quote edge function has been deployed with message support
-- Frontend changes are running locally on localhost:8081 but NOT committed
+- All four edge functions (`send-quote`, `generate-pdf`, `extract-keywords`, `recompute-user-profile`) deployed and returning 200
+- Frontend uses the new publishable key and authenticates cleanly against the ES256 auth server
+- Manual quote AI learning pipeline is working end-to-end — keywords are being extracted and saved to `quotes.keywords`
+- Email "Öppna offerten" typo fix is live in production
+- Landing page hero slide-over effect from previous session is unchanged and still working
 
 ## Uncommitted changes
-- Large amount of uncommitted work spanning multiple sessions
-- Modified files this session: `src/components/SendQuoteModal.tsx`, `src/hooks/useCompany.tsx`, `src/pages/Settings.tsx`, `src/pages/QuoteDetail.tsx`, `src/pages/QuoteBuilder.tsx`, `supabase/functions/send-quote/index.ts`, `supabase/config.toml`
-- New files this session: `src/lib/emailTemplate.ts`, `supabase/migrations/20260416_add_email_template_to_companies.sql`
-- Nothing has been committed or pushed to git
+- Modified: `package.json`, `package-lock.json` (from prior session — framer-motion), `session-state.md`, `src/App.tsx`, `src/pages/Auth.tsx` (from prior session), `src/integrations/supabase/client.ts` (publishable key swap — this session), `supabase/config.toml` (verify_jwt entries for all four functions — this session), `supabase/functions/send-quote/index.ts` (typo fix — now deployed but still uncommitted locally)
+- Untracked: `src/data/showcaseData.ts`, `src/pages/FeatureDetail.tsx`, `src/pages/LandingPage.tsx` (all from prior session)
 
 ## What comes next
-- Test the full email flow end-to-end: send a quote with custom message + PDF, verify the received email looks correct
-- Test Settings → save template → reload → verify it persists → open send modal → verify pre-fill
-- Commit and push all accumulated changes — growing amount of uncommitted work across many sessions
-- The send-quote edge function needs to be redeployed with the latest code (message textarea always visible change)
+- Commit the accumulated changes — now spans three sessions of work (landing page hero, this session's key swap + config changes, typo fix)
+- Swap the Image 1 / Image 2 placeholders in the landing page hero for real media and tune the `-55%` strip shift
+- Replace the Resend `from: "onboarding@resend.dev"` with a verified domain before production use
 
 ## Open questions
-- The "from" address is still `onboarding@resend.dev` (Resend test sender) — needs a real domain for production
-- extract-keywords edge function returning 401 (visible in console logs) — separate issue, not addressed this session
-- Whether to add SMS support for the message field when Twilio is configured later
+- Root cause of the `UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM` gateway error is not fully resolved — it's a Supabase infrastructure quirk (possibly needs a CLI update from v2.84.10 → v2.90.0 + redeploy, or possibly requires revoking the legacy HS256 previous key). User chose the pragmatic `verify_jwt = false` workaround instead. If Supabase fixes the gateway behavior later, the config entries for `extract-keywords` and `recompute-user-profile` could be removed to re-enable the outer check
+- Feature-detail page transition from the showcase card still hasn't been revisited since the hero overhaul
+- Whether to continue pursuing a true fix (CLI update + redeploy) vs leaving the current workaround in place long-term
 
 ## Context that is easy to forget
-- `supabase/config.toml` has `verify_jwt = false` for both send-quote and generate-pdf — this is intentional for the internal function-to-function call to work
-- QuoteBuilder.tsx previously passed `quoteNumber=""` instead of `customerName` to SendQuoteModal — this was a bug from a prior refactor, fixed this session
-- The email always appends an "Öppna offerten" button link regardless of what the user writes in their message — this is by design so the quote link is never missing
-- The default email template constant lives in `src/lib/emailTemplate.ts` and is used as fallback when company.email_template is NULL
-- supabase.exe in the project root is the CLI tool — should be in .gitignore
+- `verify_jwt = false` is scoped per-function in `config.toml` — it does NOT affect the rest of the project, the database (still RLS-protected), or auth itself. Only the four listed functions skip the gateway's outer JWT check
+- `extract-keywords` and `recompute-user-profile` still have their own internal `supabase.auth.getUser()` checks that require a valid login — the gateway bypass does not actually open them up to strangers
+- `send-quote` and `generate-pdf` have NO internal auth check — they rely solely on the (now disabled) outer gateway check. A stranger who knew a valid quote UUID could theoretically trigger them, but product decision is that this is acceptable risk (PDF attached to email, no public quote links)
+- Public `/q/:id` route still exists in code but is not the intended flow anymore — customers get PDFs via email attachment
+- Supabase CLI is v2.84.10; latest is v2.90.0. A `npm install -g supabase` attempt failed (not supported). Manual download + extract via `tar` was attempted but the binary did not actually update. Left unresolved
+- The project's JWT signing keys dashboard shows ECC (P-256) as the current key and legacy HS256 as "previously used" — this is the correct migrated state
+- `supabase.exe` in the project root is the CLI tool (still on the old version)
+- `supabase/config.toml` has `verify_jwt = false` for four functions; all others use the default `true`
+- `HomeRoute` in `src/App.tsx` conditionally renders LandingPage vs Dashboard based on auth state
+- `Auth.tsx` reads `?signup=true` from URL to pre-select signup mode
+- Three documented UI patterns live in `~/.claude/website-ui-reference.md`: sticky section overlay, card expand overlay, horizontal slide-over
 - capybara

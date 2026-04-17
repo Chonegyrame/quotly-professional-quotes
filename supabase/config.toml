@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.generate-pdf]
 verify_jwt = false
+
+[functions.extract-keywords]
+verify_jwt = false
+
+[functions.recompute-user-profile]
+verify_jwt = false
