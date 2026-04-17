@@ -25,7 +25,7 @@ export default function Auth() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
         <p className="text-muted-foreground">Laddar...</p>
       </div>
     );
@@ -54,7 +54,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-stone-50 flex flex-col">
       {/* Simple header */}
       <header className="flex h-16 items-center px-4 sm:px-6">
         <Link to="/" className="flex items-center gap-2">
@@ -67,7 +67,7 @@ export default function Auth() {
 
       {/* Centered auth card */}
       <div className="flex flex-1 items-center justify-center px-4 pb-16">
-        <Card className="w-full max-w-md border-slate-200 shadow-lg">
+        <Card className="w-full max-w-md border-stone-200 shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-xl">
               {isSignUp ? 'Skapa konto' : 'Logga in'}

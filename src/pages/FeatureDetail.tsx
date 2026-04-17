@@ -35,7 +35,7 @@ export default function FeatureDetail() {
       className="min-h-screen bg-white"
     >
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-4">
             <motion.button
@@ -66,11 +66,11 @@ export default function FeatureDetail() {
       </header>
 
       {/* Hero media area — contained with background */}
-      <div className="bg-gradient-to-b from-slate-100 to-white px-4 py-12 sm:px-6 sm:py-16">
+      <div className="bg-gradient-to-b from-stone-100 to-white px-4 py-12 sm:px-6 sm:py-16">
         <motion.div
           layoutId={`showcase-card-${item.id}`}
           transition={{ duration: 0.5, ease: [0.25, 0.4, 0, 1] }}
-          className="relative mx-auto max-w-5xl aspect-video overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl"
+          className="relative mx-auto max-w-5xl aspect-video overflow-hidden rounded-2xl bg-gradient-to-br from-stone-800 to-stone-900 shadow-2xl"
         >
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
             <motion.div
@@ -163,7 +163,7 @@ export default function FeatureDetail() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 1 }}
-          className="mt-20 border-t border-slate-200 pt-10"
+          className="mt-20 border-t border-stone-200 pt-10"
         >
           <p className="mb-6 text-sm font-medium text-muted-foreground">Utforska fler funktioner</p>
           <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">

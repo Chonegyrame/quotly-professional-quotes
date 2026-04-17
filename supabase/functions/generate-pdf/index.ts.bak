@@ -70,43 +70,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Permission gate.
-    // Two accepted caller types:
-    //  1. The service role (used when send-quote invokes this internally) — trusted, skip RLS check.
-    //  2. A logged-in user — verify they can see the quote through an RLS-scoped client.
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const isServiceRoleCaller =
-      serviceRoleKey.length > 0 && authHeader === `Bearer ${serviceRoleKey}`;
-
-    if (!isServiceRoleCaller) {
-      const authClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader } } },
-      );
-
-      const { data: permCheck, error: permError } = await authClient
-        .from("quotes")
-        .select("id")
-        .eq("id", quoteId)
-        .maybeSingle();
-
-      if (permError || !permCheck) {
-        return new Response(
-          JSON.stringify({ error: "Quote not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",

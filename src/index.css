@@ -6,33 +6,33 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 213 39% 15%;
+    --background: 60 9% 98%;
+    --foreground: 24 10% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 213 39% 15%;
+    --card-foreground: 24 10% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 213 39% 15%;
+    --popover-foreground: 24 10% 10%;
 
-    --primary: 213 53% 24%;
+    --primary: 24 10% 10%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 96%;
-    --secondary-foreground: 213 39% 15%;
+    --secondary: 60 5% 96%;
+    --secondary-foreground: 24 10% 10%;
 
-    --muted: 220 14% 93%;
-    --muted-foreground: 215 14% 45%;
+    --muted: 20 6% 90%;
+    --muted-foreground: 25 5% 45%;
 
-    --accent: 38 92% 50%;
+    --accent: 17 88% 40%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 89%;
-    --input: 220 13% 89%;
-    --ring: 213 53% 24%;
+    --border: 24 6% 83%;
+    --input: 24 6% 83%;
+    --ring: 17 88% 40%;
 
     --radius: 0.75rem;
 
@@ -57,25 +57,25 @@
   }
 
   .dark {
-    --background: 213 39% 8%;
-    --foreground: 220 20% 96%;
-    --card: 213 39% 12%;
-    --card-foreground: 220 20% 96%;
-    --popover: 213 39% 12%;
-    --popover-foreground: 220 20% 96%;
-    --primary: 213 53% 55%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 213 30% 18%;
-    --secondary-foreground: 220 20% 96%;
-    --muted: 213 30% 18%;
-    --muted-foreground: 215 14% 60%;
-    --accent: 38 92% 50%;
+    --background: 20 14% 4%;
+    --foreground: 60 5% 96%;
+    --card: 24 10% 10%;
+    --card-foreground: 60 5% 96%;
+    --popover: 24 10% 10%;
+    --popover-foreground: 60 5% 96%;
+    --primary: 60 5% 96%;
+    --primary-foreground: 24 10% 10%;
+    --secondary: 12 6% 15%;
+    --secondary-foreground: 60 5% 96%;
+    --muted: 12 6% 15%;
+    --muted-foreground: 24 5% 64%;
+    --accent: 17 88% 45%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 213 30% 20%;
-    --input: 213 30% 20%;
-    --ring: 213 53% 55%;
+    --border: 12 6% 15%;
+    --input: 12 6% 15%;
+    --ring: 17 88% 45%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -100,6 +100,14 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
   }
+}
+
+/* ===== Landing dot grid (masked, fades toward edges) ===== */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(28, 25, 23, 0.14) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 55% at center, black 25%, transparent 85%);
+  mask-image: radial-gradient(ellipse 70% 55% at center, black 25%, transparent 85%);
 }
 
 /* ===== Auth landing visuals ===== */

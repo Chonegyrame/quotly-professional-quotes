@@ -129,30 +129,46 @@ function ScrollTypeWriter({
 /*  Data                                                               */
 /* ------------------------------------------------------------------ */
 
-const features = [
+const accordionFeatures = [
   {
+    index: '01',
+    title: 'AI genererar offert från kundens förfrågan',
+    description: 'Skapa tydliga offerter med arbete och material uppdelat. Se professionell ut från dag ett.',
     icon: FileText,
-    title: 'Strukturerade offerter',
-    description: 'Skapa tydliga offerter med arbete och material uppdelat.',
-    color: 'bg-blue-500/10 text-blue-600',
+    bg: 'bg-stone-900',
+    text: 'text-white',
+    muted: 'text-stone-400',
+    svgColor: '#4f6070',
   },
   {
+    index: '02',
+    title: 'Individuell lärandemekanism som gör att offerterna blir bättre och bättre',
+    description: 'AI:n läser din fritext och skapar en komplett offert med rätt material och timpris.',
     icon: Sparkles,
-    title: 'AI-generering',
-    description: 'Beskriv jobbet i fritext — AI:n skapar en komplett offert.',
-    color: 'bg-amber-500/10 text-amber-600',
+    bg: 'bg-teal-600',
+    text: 'text-white',
+    muted: 'text-teal-200',
+    svgColor: '#81c8be',
   },
   {
+    index: '03',
+    title: 'Generera PDF och skicka direkt från Quotly',
+    description: 'PDF-offert direkt i mejlet. Kunden öppnar på sin mobil, du får kvitto direkt.',
     icon: Send,
-    title: 'PDF & mejl',
-    description: 'Skicka offerten med bifogad PDF direkt från appen.',
-    color: 'bg-emerald-500/10 text-emerald-600',
+    bg: 'bg-orange-500',
+    text: 'text-white',
+    muted: 'text-orange-100',
+    svgColor: '#fcd4a0',
   },
   {
+    index: '04',
+    title: 'Analys och insikter',
+    description: 'Se exakt när offerten öppnades. Följ upp i rätt stund och stäng fler affärer.',
     icon: BarChart3,
-    title: 'Följ upp',
-    description: 'Se vilka offerter som öppnats, godkänts eller väntar.',
-    color: 'bg-purple-500/10 text-purple-600',
+    bg: 'bg-stone-100',
+    text: 'text-stone-900',
+    muted: 'text-stone-500',
+    svgColor: '#94a3b8',
   },
 ];
 
@@ -175,24 +191,122 @@ const steps = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Feature cards (4 in a row)                                         */
+/*  Feature accordion                                                  */
 /* ------------------------------------------------------------------ */
 
-function FeatureCard({ feature }: { feature: (typeof features)[0] }) {
-  const Icon = feature.icon;
-
+function DecorativeSVG({ index, color }: { index: number; color: string }) {
+  if (index === 0) {
+    const dots = [];
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        dots.push(
+          <circle
+            key={`${row}-${col}`}
+            cx={col * 22 + 11}
+            cy={row * 22 + 11}
+            r={2.5}
+            fill={color}
+            opacity={0.25 + ((row + col) / 12) * 0.55}
+          />,
+        );
+      }
+    }
+    return <svg width="154" height="154" viewBox="0 0 154 154">{dots}</svg>;
+  }
+  if (index === 1) {
+    return (
+      <svg width="160" height="130" viewBox="0 0 160 130" fill="none">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <path
+            key={i}
+            d={`M 0 ${30 + i * 14} Q 40 ${8 + i * 14} 80 ${30 + i * 14} T 160 ${30 + i * 14}`}
+            stroke={color}
+            strokeWidth="1.5"
+            opacity={0.25 + i * 0.1}
+          />
+        ))}
+      </svg>
+    );
+  }
+  if (index === 2) {
+    return (
+      <svg width="160" height="160" viewBox="0 0 160 160">
+        {Array.from({ length: 28 }, (_, i) => {
+          const angle = (i / 28) * Math.PI * 2;
+          const r2 = 58 + Math.sin(i * 1.4) * 14;
+          return (
+            <line
+              key={i}
+              x1={80 + Math.cos(angle) * 18}
+              y1={80 + Math.sin(angle) * 18}
+              x2={80 + Math.cos(angle) * r2}
+              y2={80 + Math.sin(angle) * r2}
+              stroke={color}
+              strokeWidth="1"
+              opacity="0.65"
+            />
+          );
+        })}
+      </svg>
+    );
+  }
   return (
-    <motion.div
-      variants={staggerItem}
-      whileHover={{ y: -6, transition: { duration: 0.3, ease: 'easeOut' } }}
-      className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-lg"
-    >
-      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${feature.color}`}>
-        <Icon className="h-6 w-6" />
-      </div>
-      <h3 className="mt-4 font-heading text-base font-semibold text-foreground">{feature.title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
-    </motion.div>
+    <svg width="160" height="160" viewBox="0 0 160 160" fill="none">
+      {[18, 34, 50, 64, 78].map((r, i) => (
+        <ellipse
+          key={i}
+          cx="80"
+          cy="88"
+          rx={r * 1.5}
+          ry={r}
+          stroke={color}
+          strokeWidth="1.5"
+          opacity={0.2 + i * 0.12}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function FeatureAccordion() {
+  const [hovered, setHovered] = useState<number | null>(null);
+  return (
+    <div className="flex h-[500px] w-full overflow-hidden">
+      {accordionFeatures.map((f, i) => {
+        const Icon = f.icon;
+        const isHov = hovered === i;
+        const anyHov = hovered !== null;
+        return (
+          <div
+            key={i}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            className={`${f.bg} relative flex flex-col justify-between p-8 overflow-hidden cursor-default`}
+            style={{ flex: anyHov ? (isHov ? 2.0 : 0.75) : 1, transition: 'flex 0.35s ease' }}
+          >
+            <div>
+              <div className={`${f.text} opacity-50 mb-3`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <h3 className={`font-heading text-lg font-bold leading-snug ${f.text}`}>
+                {f.title}
+              </h3>
+            </div>
+            <div className="flex flex-1 items-center justify-center py-6 pointer-events-none">
+              <DecorativeSVG index={i} color={f.svgColor} />
+            </div>
+            <div>
+              <p className={`text-xs font-mono tracking-widest mb-3 ${f.muted}`}>{f.index} / 04</p>
+              <p
+                className={`text-sm leading-relaxed ${f.muted} transition-opacity duration-300 ${isHov ? 'opacity-100' : 'opacity-0'}`}
+              >
+                {f.description}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -226,7 +340,7 @@ function FeatureOverlay({ item, onClose }: { item: ShowcaseItem; onClose: () => 
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.2 }}
-        className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-md"
+        className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md"
       >
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <motion.button
@@ -277,7 +391,7 @@ function FeatureOverlay({ item, onClose }: { item: ShowcaseItem; onClose: () => 
         <motion.div
           layoutId={`showcase-card-${item.id}`}
           transition={{ duration: 0.5, ease: [0.25, 0.4, 0, 1] }}
-          className="relative mx-auto max-w-5xl aspect-video overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl"
+          className="relative mx-auto max-w-5xl aspect-video overflow-hidden rounded-2xl bg-gradient-to-br from-stone-800 to-stone-900 shadow-2xl"
         >
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
             <motion.div
@@ -363,24 +477,49 @@ export default function LandingPage() {
   const selectedItem = selectedFeature ? showcaseItems.find((s) => s.id === selectedFeature) : null;
 
   const featureRef = useRef(null);
-  const featureInView = useInView(featureRef, { once: true, margin: '-60px' });
   const showcaseRef = useRef(null);
 
   // Hero image overlay — driven by PAGE scroll so animation starts immediately
   const heroImgRef = useRef(null);
   const { scrollY: pageScrollY } = useScroll();
-  // Animation completes when user has scrolled 1200px from the top
-  const heroImgScroll = useTransform(pageScrollY, [0, 1200], [0, 1]);
-  // Image 2 fades in (phase 1)
-  const img2FadeIn = useTransform(heroImgScroll, [0, 0.15], [0, 1]);
-  // Whole strip shifts left — pushes Image 1 off-screen (phase 3)
-  const stripX = useTransform(heroImgScroll, [0.2, 0.65], ['0%', '-55%']);
-  // Text 1 shrinks/fades as it gets squished (phase 3, early)
-  const text1Width = useTransform(heroImgScroll, [0.2, 0.45], ['100%', '0%']);
-  const text1FadeOpacity = useTransform(heroImgScroll, [0.2, 0.4], [1, 0]);
-  // Text 2 types in (phase 3, later) — title then subtitle
-  const text2TitleProgress = useTransform(heroImgScroll, [0.5, 0.7], [0, 1]);
-  const text2SubProgress = useTransform(heroImgScroll, [0.7, 1.0], [0, 1]);
+  // Full animation spans 2400px: Images 2 & 3 each get 1200px of scroll room
+  const heroImgScroll = useTransform(pageScrollY, [0, 2400], [0, 1]);
+
+  // Phase 1a (0 → 0.25): Image 2 flows in from off-screen right.
+  const img2SpacerWidth = useTransform(heroImgScroll, [0, 0.25], ['28vw', '0vw']);
+  const img2FadeIn = useTransform(heroImgScroll, [0, 0.075], [0, 1]);
+
+  // Phase 2a (0.25 → 0.41): Text 1 squishes, strip shifts left to center Image 2.
+  const stripX = useTransform(heroImgScroll, [0.25, 0.41], ['0%', '-55%']);
+  const text1Width = useTransform(heroImgScroll, [0.25, 0.35], ['350px', '0px']);
+  const text1ScaleX = useTransform(heroImgScroll, [0.25, 0.34], [1, 0.15]);
+  const text1ScaleY = useTransform(heroImgScroll, [0.25, 0.29, 0.34], [1, 1.14, 1.05]);
+  const text1FadeOpacity = useTransform(heroImgScroll, [0.31, 0.35], [1, 0]);
+
+  // Phase 3a (0.35 → 0.5): Text 2 types in.
+  const text2TitleProgress = useTransform(heroImgScroll, [0.35, 0.425], [0, 1]);
+  const text2SubProgress = useTransform(heroImgScroll, [0.425, 0.5], [0, 1]);
+
+  // Phase 1b (0.5 → 0.75): Image 3 flows in — mirror of Image 2's phase 1a.
+  const img3SpacerWidth = useTransform(heroImgScroll, [0.5, 0.75], ['28vw', '0vw']);
+  const img3FadeIn = useTransform(heroImgScroll, [0.5, 0.575], [0, 1]);
+
+  // Phase 2b (0.75 → 0.91): Text 2 squishes, strip shifts left again to center Image 3.
+  const stripX2 = useTransform(heroImgScroll, [0.75, 0.91], ['0%', '-55%']);
+  const text2Width = useTransform(heroImgScroll, [0.75, 0.85], ['350px', '0px']);
+  const text2ScaleX = useTransform(heroImgScroll, [0.75, 0.84], [1, 0.15]);
+  const text2ScaleY = useTransform(heroImgScroll, [0.75, 0.79, 0.84], [1, 1.14, 1.05]);
+  const text2FadeOpacity = useTransform(heroImgScroll, [0.81, 0.85], [1, 0]);
+
+  // Phase 3b (0.85 → 1.0): Text 3 types in.
+  const text3TitleProgress = useTransform(heroImgScroll, [0.85, 0.925], [0, 1]);
+  const text3SubProgress = useTransform(heroImgScroll, [0.925, 1.0], [0, 1]);
+
+  // Combined strip X: accumulates both left-shifts.
+  const combinedStripX = useTransform(
+    [stripX, stripX2],
+    ([x1, x2]) => `calc(${x1 as string} + ${x2 as string})`,
+  );
 
   // Showcase scroll — fade feature cards as showcase rises
   const { scrollYProgress: showcaseScroll } = useScroll({
@@ -397,7 +536,7 @@ export default function LandingPage() {
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.25, 0.4, 0, 1] }}
-        className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-md"
+        className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md"
       >
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2.5">
@@ -428,9 +567,10 @@ export default function LandingPage() {
 
       {/* Hero — text + image strip all pinned together, scrolling drives animation */}
       <section ref={heroImgRef} className="relative">
-        <div className="sticky top-16 z-10 flex min-h-[calc(100vh-4rem)] flex-col items-stretch bg-gradient-to-b from-slate-50/80 to-white">
+        <div className="sticky top-16 z-10 flex min-h-[calc(100vh-4rem)] flex-col items-stretch bg-gradient-to-b from-stone-50 to-white">
+          <div aria-hidden className="dot-grid pointer-events-none absolute inset-0 -z-20" />
           <motion.div
-            className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-accent/5 blur-3xl"
+            className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[600px] w-[800px] -transtone-x-1/2 rounded-full bg-accent/10 blur-3xl"
             animate={{ scale: [1, 1.05, 1], opacity: [0.5, 0.7, 0.5] }}
             transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
           />
@@ -488,7 +628,7 @@ export default function LandingPage() {
 
           {/* Image strip */}
           <div className="relative mx-auto w-full max-w-6xl px-4 pb-12 sm:px-6">
-            <motion.div style={{ x: stripX }} className="flex items-center gap-6">
+            <motion.div style={{ x: combinedStripX }} className="flex items-center gap-6">
               {/* Image 1 — always visible initially */}
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -496,45 +636,91 @@ export default function LandingPage() {
                 transition={{ duration: 0.8, delay: 0.8, ease: [0.25, 0.4, 0, 1] }}
                 className="w-[55%] flex-shrink-0"
               >
-                <div className="aspect-[4/3] w-full rounded-2xl bg-slate-200 shadow-lg flex items-center justify-center">
-                  <span className="text-sm text-slate-400 font-medium">Bild 1</span>
+                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-200 shadow-lg flex items-center justify-center">
+                  <span className="text-sm text-stone-400 font-medium">Bild 1</span>
                 </div>
               </motion.div>
 
-              {/* Text 1 — gets squished as strip moves left */}
+              {/* Text 1 — gets squished as strip moves left.
+                  Outer collapses width (layout). Inner scales glyphs (visual squish). */}
               <motion.div
                 style={{ width: text1Width, opacity: text1FadeOpacity }}
                 className="flex-shrink-0 overflow-hidden"
               >
-                <div className="min-w-[250px] sm:min-w-[350px]">
+                <motion.div
+                  style={{
+                    scaleX: text1ScaleX,
+                    scaleY: text1ScaleY,
+                    transformOrigin: 'left center',
+                  }}
+                  className="min-w-[250px] sm:min-w-[350px]"
+                >
                   <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
                     Skapa offerter snabbare
                   </h2>
                   <p className="mt-3 text-base text-muted-foreground sm:text-lg">
                     Beskriv jobbet — Quotly bygger en komplett offert med arbete och material.
                   </p>
-                </div>
+                </motion.div>
               </motion.div>
 
-              {/* Image 2 — fades in beside Text 1, then pushes left with the strip */}
+              {/* Spacer — shrinks as user scrolls, pulling Image 2 toward Text 1 through flex layout. */}
+              <motion.div
+                aria-hidden
+                style={{ width: img2SpacerWidth }}
+                className="flex-shrink-0"
+              />
+
+              {/* Image 2 — natural flex position. No translate; it moves purely because the spacer shrinks. */}
               <motion.div
                 style={{ opacity: img2FadeIn }}
                 className="w-[55%] flex-shrink-0"
               >
-                <div className="aspect-[4/3] w-full rounded-2xl bg-slate-300 shadow-lg flex items-center justify-center">
-                  <span className="text-sm text-slate-500 font-medium">Bild 2</span>
+                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-300 shadow-lg flex items-center justify-center">
+                  <span className="text-sm text-stone-500 font-medium">Bild 2</span>
                 </div>
               </motion.div>
 
-              {/* Text 2 — types out sequentially */}
+              {/* Text 2 — types in during phase 3a, squishes in phase 2b. */}
+              <motion.div
+                style={{ width: text2Width, opacity: text2FadeOpacity }}
+                className="flex-shrink-0 overflow-hidden"
+              >
+                <motion.div
+                  style={{ scaleX: text2ScaleX, scaleY: text2ScaleY, transformOrigin: 'left center' }}
+                  className="min-w-[250px] sm:min-w-[350px]"
+                >
+                  <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
+                    <ScrollTypeWriter text="Byggd för hantverkare" progress={text2TitleProgress} />
+                  </h2>
+                  <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+                    <ScrollTypeWriter
+                      text="Oavsett om du jobbar med el, VVS eller bygg — Quotly anpassar sig efter ditt yrke."
+                      progress={text2SubProgress}
+                    />
+                  </p>
+                </motion.div>
+              </motion.div>
+
+              {/* Spacer — shrinks to pull Image 3 in. */}
+              <motion.div aria-hidden style={{ width: img3SpacerWidth }} className="flex-shrink-0" />
+
+              {/* Image 3 — slides in from off-screen right via spacer collapse. */}
+              <motion.div style={{ opacity: img3FadeIn }} className="w-[55%] flex-shrink-0">
+                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-400 shadow-lg flex items-center justify-center">
+                  <span className="text-sm text-stone-600 font-medium">Bild 3</span>
+                </div>
+              </motion.div>
+
+              {/* Text 3 — types out sequentially */}
               <div className="min-w-[250px] sm:min-w-[350px] flex-shrink-0">
                 <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
-                  <ScrollTypeWriter text="Byggd för hantverkare" progress={text2TitleProgress} />
+                  <ScrollTypeWriter text="Följ upp i realtid" progress={text3TitleProgress} />
                 </h2>
                 <p className="mt-3 text-base text-muted-foreground sm:text-lg">
                   <ScrollTypeWriter
-                    text="Oavsett om du jobbar med el, VVS eller bygg — Quotly anpassar sig efter ditt yrke."
-                    progress={text2SubProgress}
+                    text="Se när kunden öppnar offerten och svara snabbt när läget är rätt."
+                    progress={text3SubProgress}
                   />
                 </p>
               </div>
@@ -543,8 +729,8 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Scroll spacer — provides room for sticky to pin through the full 1200px animation */}
-        <div className="h-[1200px]" />
+        {/* Scroll spacer — provides room for sticky to pin through the full 2400px animation */}
+        <div className="h-[2400px]" />
       </section>
 
       {/* Stacking sections — feature cards pinned, showcase slides up over them */}
@@ -554,7 +740,7 @@ export default function LandingPage() {
           className="sticky top-16 z-0 origin-top"
           style={{ opacity: featureFadeOpacity, scale: featureFadeScale }}
         >
-          <section className="bg-slate-50/70 py-20 sm:py-24">
+          <section className="bg-white py-20 sm:py-24 overflow-hidden">
             <div className="mx-auto max-w-6xl px-4 sm:px-6">
               <FadeIn>
                 <div className="mx-auto max-w-2xl text-center">
@@ -566,18 +752,9 @@ export default function LandingPage() {
                   </p>
                 </div>
               </FadeIn>
-
-              <motion.div
-                ref={featureRef}
-                initial="hidden"
-                animate={featureInView ? 'visible' : 'hidden'}
-                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 } } }}
-                className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
-              >
-                {features.map((feature) => (
-                  <FeatureCard key={feature.title} feature={feature} />
-                ))}
-              </motion.div>
+            </div>
+            <div ref={featureRef} className="mt-12">
+              <FeatureAccordion />
             </div>
           </section>
         </motion.div>
@@ -585,7 +762,7 @@ export default function LandingPage() {
         {/* Showcase — scrolls normally over the sticky feature cards */}
         <section
           ref={showcaseRef}
-          className="relative z-10 rounded-t-[2.5rem] bg-gradient-to-b from-slate-900 to-slate-800 py-20 sm:py-28"
+          className="relative z-10 rounded-t-[2.5rem] bg-gradient-to-b from-stone-900 to-stone-800 py-20 sm:py-28"
         >
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <FadeIn>
@@ -593,7 +770,7 @@ export default function LandingPage() {
               <h2 className="font-heading text-3xl font-bold text-white sm:text-4xl">
                 Se Quotly i aktion
               </h2>
-              <p className="mt-4 text-lg text-slate-400">
+              <p className="mt-4 text-lg text-stone-400">
                 Klicka på en funktion för att se mer.
               </p>
             </div>
@@ -613,7 +790,7 @@ export default function LandingPage() {
               >
                 <motion.div
                   layoutId={`showcase-card-${item.id}`}
-                  className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-800 shadow-2xl ring-1 ring-white/10"
+                  className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-stone-700 to-stone-800 shadow-2xl ring-1 ring-white/10"
                 >
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
@@ -636,7 +813,7 @@ export default function LandingPage() {
       </div>
 
       {/* How it works */}
-      <section className="bg-slate-50/70 py-20 sm:py-24">
+      <section className="bg-stone-50/70 py-20 sm:py-24">
         <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <FadeIn>
             <div className="mx-auto max-w-2xl text-center">
@@ -689,7 +866,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-slate-50 py-8">
+      <footer className="border-t border-stone-200 bg-stone-50 py-8">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-2">

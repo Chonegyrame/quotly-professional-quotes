@@ -51,13 +51,13 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="relative min-h-screen overflow-hidden bg-stone-950 text-stone-100">
       <div className="auth-grid absolute inset-0" aria-hidden />
       <div className="auth-orb auth-orb-one" aria-hidden />
       <div className="auth-orb auth-orb-two" aria-hidden />
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-8">
-        <Card className="w-full border-white/45 bg-white/95 shadow-2xl shadow-slate-950/35 backdrop-blur-sm">
+        <Card className="w-full border-white/45 bg-white/95 shadow-2xl shadow-stone-950/35 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-lg text-foreground">Nytt lösenord</CardTitle>
             <p className="text-sm text-muted-foreground">

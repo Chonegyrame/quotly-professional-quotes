@@ -401,12 +401,12 @@ export default function Materials() {
                 onClick={() => setActiveTrade(trade)}
                 className={`trade-card-interactive h-[220px] w-[200px] rounded-[12px] border-l-[4px] p-5 text-left ${tradeCardThemeClass} ${selected ? 'ring-2 ring-primary/25' : ''}`}
               >
-                <div className="flex h-full flex-col justify-center text-slate-800">
+                <div className="flex h-full flex-col justify-center text-stone-800">
                   <div className="mb-2 flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-slate-700" />
+                    <Icon className="h-4 w-4 text-stone-700" />
                     <span className="text-[20px] font-semibold leading-tight">{categoryLabels[trade]}</span>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-700">{categorySubtitles[trade]}</p>
+                  <p className="text-sm leading-relaxed text-stone-700">{categorySubtitles[trade]}</p>
                 </div>
               </button>
             );
@@ -415,7 +415,7 @@ export default function Materials() {
       </div>
 
       <div className="relative mb-4">
-        <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+        <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -transtone-y-1/2" />
         <Input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
