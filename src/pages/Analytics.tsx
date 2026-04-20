@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, BarChart3, Target, DollarSign, Percent, Package, ArrowRight } from 'lucide-react';
+import { ArrowLeft, TrendingUp, BarChart3, Target, DollarSign, Percent, Package, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useQuotes } from '@/hooks/useQuotes';
@@ -33,6 +33,13 @@ function formatSEK(n: number) {
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
 export default function Analytics() {
@@ -154,6 +161,39 @@ export default function Analytics() {
     };
   }, [quotes, filteredQuotes, dateFilter]);
 
+  const aiStats = useMemo(() => {
+    // Only AI quotes that have been sent (counts are populated on send
+    // by recompute-user-profile; null means either manual or unsent AI).
+    const aiSentQuotes = filteredQuotes.filter(
+      (q: any) => q.ai_materials_added !== null && q.ai_materials_added !== undefined,
+    );
+
+    if (aiSentQuotes.length === 0) return null;
+
+    const added = aiSentQuotes.map((q: any) => q.ai_materials_added ?? 0);
+    const removed = aiSentQuotes.map((q: any) => q.ai_materials_removed ?? 0);
+    const total = aiSentQuotes.map(
+      (q: any) => (q.ai_materials_added ?? 0) + (q.ai_materials_removed ?? 0),
+    );
+
+    const buckets = [0, 0, 0, 0, 0, 0];
+    for (const t of total) {
+      buckets[Math.min(t, 5)]++;
+    }
+    const histogram = buckets.map((count, i) => ({
+      bucket: i === 5 ? '5+' : String(i),
+      count,
+    }));
+
+    return {
+      n: aiSentQuotes.length,
+      medianAdded: median(added),
+      medianRemoved: median(removed),
+      medianTotal: median(total),
+      histogram,
+    };
+  }, [filteredQuotes]);
+
   if (isLoading) {
     return <div className="p-6 text-center text-muted-foreground">Loading analytics...</div>;
   }
@@ -267,6 +307,50 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </button>
+
+      {aiStats && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-accent" />
+              AI-offertkvalitet
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                n={aiStats.n} skickade AI-offerter
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="rounded-lg border bg-card/50 p-3 text-center">
+                <div className="text-2xl font-heading font-bold">{aiStats.medianAdded}</div>
+                <div className="text-xs text-muted-foreground mt-1">Median tillagda</div>
+              </div>
+              <div className="rounded-lg border bg-card/50 p-3 text-center">
+                <div className="text-2xl font-heading font-bold">{aiStats.medianRemoved}</div>
+                <div className="text-xs text-muted-foreground mt-1">Median borttagna</div>
+              </div>
+              <div className="rounded-lg border bg-card/50 p-3 text-center">
+                <div className="text-2xl font-heading font-bold">{aiStats.medianTotal}</div>
+                <div className="text-xs text-muted-foreground mt-1">Median totalt</div>
+              </div>
+            </div>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={aiStats.histogram}>
+                  <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Offerter" fill="hsl(213, 53%, 24%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Antal material tillagda eller borttagna mellan AI-förslag och skickad offert.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle className="text-lg">Quote Status Breakdown</CardTitle></CardHeader>
         <CardContent>

@@ -469,6 +469,204 @@ function FeatureOverlay({ item, onClose }: { item: ShowcaseItem; onClose: () => 
 }
 
 /* ------------------------------------------------------------------ */
+/*  Quote slot — scroll-driven quote writing animation                 */
+/* ------------------------------------------------------------------ */
+
+function fmtSEK(n: number): string {
+  return new Intl.NumberFormat('sv-SE').format(n) + '\u00a0kr';
+}
+
+const QUOTE_LINES = [
+  { desc: 'Arbete',   sub: 'Målning inomhus',      qty: 8,  uLabel: 'h',  unitPrice: 450 },
+  { desc: 'Väggfärg', sub: 'Vit, 3\u00a0l\u00a0×\u00a04 burkar', qty: 12, uLabel: 'l',  unitPrice: 89  },
+  { desc: 'Primer',   sub: 'Grundning',             qty: 6,  uLabel: 'l',  unitPrice: 75  },
+  { desc: 'Rullset',  sub: 'Verktyg & tillbehör',  qty: 1,  uLabel: 'st', unitPrice: 149 },
+];
+
+const Q_SUBTOTAL = QUOTE_LINES.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+const Q_TAX      = Math.round(Q_SUBTOTAL * 0.25);
+const Q_GRAND    = Q_SUBTOTAL + Q_TAX;
+
+const QUOTE_SEGS = [
+  ...QUOTE_LINES.flatMap((l, i) => [
+    { key: `l${i}d`, value: l.desc },
+    { key: `l${i}s`, value: l.sub },
+    { key: `l${i}q`, value: `${l.qty}\u00a0${l.uLabel}` },
+    { key: `l${i}u`, value: fmtSEK(l.unitPrice) },
+    { key: `l${i}t`, value: fmtSEK(l.qty * l.unitPrice) },
+  ]),
+  { key: 'sub', value: fmtSEK(Q_SUBTOTAL) },
+  { key: 'tax', value: fmtSEK(Q_TAX) },
+  { key: 'gnd', value: fmtSEK(Q_GRAND) },
+];
+
+const QUOTE_PLAN = QUOTE_SEGS.flatMap(({ key, value }) =>
+  [...value].map((_, ci) => ({ key, ci }))
+);
+
+function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
+  const [revealed, setRevealed] = useState(0);
+  const prefersReduced =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  useEffect(() => {
+    if (prefersReduced) { setRevealed(QUOTE_PLAN.length); return; }
+    return progress.on('change', (v) =>
+      setRevealed(Math.round(Math.max(0, Math.min(1, v)) * QUOTE_PLAN.length))
+    );
+  }, [progress, prefersReduced]);
+
+  const revMap: Record<string, number> = {};
+  for (let i = 0; i < Math.min(revealed, QUOTE_PLAN.length); i++) {
+    const k = QUOTE_PLAN[i].key;
+    revMap[k] = (revMap[k] ?? 0) + 1;
+  }
+  const caretKey =
+    revealed > 0 && revealed < QUOTE_PLAN.length
+      ? QUOTE_PLAN[revealed - 1].key
+      : null;
+
+  const cell = (segKey: string, full: string) => {
+    const n = revMap[segKey] ?? 0;
+    if (n === 0) return null;
+    return (
+      <>
+        {full.slice(0, n)}
+        {caretKey === segKey && (
+          <span className="inline-block w-[1.5px] h-[0.85em] bg-orange-500 align-text-bottom animate-pulse ml-px" />
+        )}
+      </>
+    );
+  };
+
+  const pct = Math.round((revealed / QUOTE_PLAN.length) * 100);
+  const isDone = revealed >= QUOTE_PLAN.length;
+
+  return (
+    <div
+      className="relative w-full aspect-[4/3] rounded-2xl shadow-lg overflow-hidden"
+      style={{
+        backgroundColor: '#faf9f7',
+        backgroundImage: 'radial-gradient(circle, rgba(100,116,139,0.18) 1px, transparent 1px)',
+        backgroundSize: '16px 16px',
+      }}
+      aria-label="Exempeloffert: Puts vägg — badrum"
+    >
+      <div
+        className="absolute bg-white border border-stone-200 rounded-xl flex flex-col overflow-hidden"
+        style={{ inset: '16px', padding: '14px 16px', fontSize: '11px' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-100 flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            <div className="flex h-4 w-4 items-center justify-center rounded bg-primary">
+              <FileText className="h-2.5 w-2.5 text-white" />
+            </div>
+            <span className="font-heading text-xs font-bold text-foreground">Quotly</span>
+          </div>
+          <div
+            className="font-mono text-[9px] font-semibold text-orange-500 border border-orange-400 rounded px-1.5 py-0.5 leading-none"
+            style={{ boxShadow: '1.5px 1.5px 0 rgba(0,0,0,0.12)' }}
+          >
+            Utkast · Offert #1042
+          </div>
+        </div>
+
+        {/* Meta */}
+        <div className="mb-2 flex-shrink-0">
+          <div className="font-heading text-xs font-bold text-foreground leading-snug">
+            Puts vägg — badrum
+          </div>
+          <div className="font-mono text-[9px] text-stone-400 mt-0.5">
+            Andersson,&nbsp;K. · Storgatan&nbsp;12 · 2026-04-20
+          </div>
+        </div>
+
+        {/* Column headers */}
+        <div
+          className="grid font-mono uppercase text-stone-400 border-b border-stone-200 pb-1 mb-1 flex-shrink-0"
+          style={{ gridTemplateColumns: '1fr 36px 52px 56px', fontSize: '8px', letterSpacing: '0.1em' }}
+        >
+          <span>Beskrivning</span>
+          <span className="text-right">Antal</span>
+          <span className="text-right">À-pris</span>
+          <span className="text-right">Totalt</span>
+        </div>
+
+        {/* Line items */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {QUOTE_LINES.map((line, i) => {
+            if ((revMap[`l${i}d`] ?? 0) === 0) return null;
+            return (
+              <div
+                key={i}
+                className="grid items-start"
+                style={{ gridTemplateColumns: '1fr 36px 52px 56px', padding: '3px 0' }}
+              >
+                <div>
+                  <div className="font-medium text-stone-800 leading-snug">
+                    {cell(`l${i}d`, line.desc)}
+                  </div>
+                  {(revMap[`l${i}s`] ?? 0) > 0 && (
+                    <div style={{ fontSize: '9px' }} className="text-stone-400">
+                      {cell(`l${i}s`, line.sub)}
+                    </div>
+                  )}
+                </div>
+                <div className="text-right font-mono text-stone-600 tabular-nums">
+                  {cell(`l${i}q`, `${line.qty}\u00a0${line.uLabel}`)}
+                </div>
+                <div className="text-right font-mono text-stone-600 tabular-nums">
+                  {cell(`l${i}u`, fmtSEK(line.unitPrice))}
+                </div>
+                <div className="text-right font-mono font-medium text-stone-800 tabular-nums">
+                  {cell(`l${i}t`, fmtSEK(line.qty * line.unitPrice))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer totals */}
+        {(revMap['sub'] ?? 0) > 0 && (
+          <div className="border-t border-dashed border-stone-200 pt-1.5 mt-1 flex-shrink-0 flex flex-col" style={{ gap: '2px' }}>
+            <div className="flex justify-between font-mono text-stone-500" style={{ fontSize: '9px' }}>
+              <span className="uppercase" style={{ letterSpacing: '0.08em' }}>Delsumma</span>
+              <span className="tabular-nums">{cell('sub', fmtSEK(Q_SUBTOTAL))}</span>
+            </div>
+            {(revMap['tax'] ?? 0) > 0 && (
+              <div className="flex justify-between font-mono text-stone-500" style={{ fontSize: '9px' }}>
+                <span className="uppercase" style={{ letterSpacing: '0.08em' }}>Moms 25%</span>
+                <span className="tabular-nums">{cell('tax', fmtSEK(Q_TAX))}</span>
+              </div>
+            )}
+            {(revMap['gnd'] ?? 0) > 0 && (
+              <div className="flex justify-between items-baseline border-t border-stone-800 pt-1 mt-0.5">
+                <span className="font-mono font-bold text-stone-800 uppercase" style={{ fontSize: '8px', letterSpacing: '0.1em' }}>Totalt inkl. moms</span>
+                <span className="font-heading font-extrabold text-stone-900 tabular-nums" style={{ fontSize: '15px', lineHeight: 1 }}>
+                  {cell('gnd', fmtSEK(Q_GRAND))}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Progress ruler */}
+        <div className="mt-1.5 flex-shrink-0">
+          <div className="h-[2px] bg-stone-100 rounded-full overflow-hidden">
+            <div className="h-full bg-orange-500 rounded-full" style={{ width: `${pct}%`, transition: 'none' }} />
+          </div>
+          <div className="mt-0.5 text-right font-mono text-stone-400" style={{ fontSize: '8px' }}>
+            {isDone ? 'Offert\u00a0klar\u00a0·\u00a0skicka' : `${pct}%\u00a0skriven`}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -484,6 +682,7 @@ export default function LandingPage() {
   const { scrollY: pageScrollY } = useScroll();
   // Full animation spans 2400px: Images 2 & 3 each get 1200px of scroll room
   const heroImgScroll = useTransform(pageScrollY, [0, 2400], [0, 1]);
+  const quoteRevealProgress = useTransform(heroImgScroll, [0, 0.22], [0, 1]);
 
   // Phase 1a (0 → 0.25): Image 2 flows in from off-screen right.
   const img2SpacerWidth = useTransform(heroImgScroll, [0, 0.25], ['28vw', '0vw']);
@@ -636,9 +835,7 @@ export default function LandingPage() {
                 transition={{ duration: 0.8, delay: 0.8, ease: [0.25, 0.4, 0, 1] }}
                 className="w-[55%] flex-shrink-0"
               >
-                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-200 shadow-lg flex items-center justify-center">
-                  <span className="text-sm text-stone-400 font-medium">Bild 1</span>
-                </div>
+                <QuoteSlot progress={quoteRevealProgress} />
               </motion.div>
 
               {/* Text 1 — gets squished as strip moves left.
