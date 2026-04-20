@@ -1,11 +1,13 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  authenticate,
+  checkIpRateLimit,
+  corsHeaders,
+  jsonResponse,
+} from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const FUNCTION_NAME = "send-quote";
+const IP_LIMIT_PER_HOUR = 20;
 
 type SendQuotePayload = {
   quoteId: string;
@@ -30,67 +32,60 @@ serve(async (req: Request) => {
 
   try {
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed. Use POST." }),
-        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Method not allowed. Use POST." }, 405);
     }
 
     const resendApiKeyRaw = Deno.env.get("RESEND_API_KEY") ?? "";
     const resendApiKey = resendApiKeyRaw.trim().replace(/^['"]|['"]$/g, "");
     if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ error: "Missing RESEND_API_KEY" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Missing RESEND_API_KEY" }, 500);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!supabaseUrl || !supabaseAnonKey) {
-      return new Response(
-        JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY" }, 500);
     }
+
+    const auth = await authenticate(req, FUNCTION_NAME);
+    if (!auth.ok) return auth.response;
+    const { ip, authClient, adminClient } = auth;
+
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
+    );
+    if (ipResp) return ipResp;
 
     const { quoteId, recipient, method, attachPdf, message }: SendQuotePayload = await req.json();
     if (!quoteId || !recipient || !method) {
-      return new Response(
-        JSON.stringify({ error: "Invalid payload. Required: quoteId, recipient, method." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      return jsonResponse(
+        { error: "Invalid payload. Required: quoteId, recipient, method." },
+        400,
       );
     }
 
     if (method === "sms") {
-      return new Response(
-        JSON.stringify({ error: "SMS ar inte konfigurerat annu." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "SMS ar inte konfigurerat annu." }, 400);
     }
 
     if (method !== "email") {
-      return new Response(
-        JSON.stringify({ error: `Unknown method: ${method}. Use email or sms.` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: `Unknown method: ${method}. Use email or sms.` }, 400);
     }
 
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: quote, error: quoteError } = await supabase
+    const { data: quote, error: quoteError } = await authClient
       .from("quotes")
       .select("id, quote_number, customer_name, valid_until")
       .eq("id", quoteId)
       .single();
 
     if (quoteError || !quote) {
-      return new Response(
-        JSON.stringify({ error: "Kunde inte hitta offerten.", details: quoteError?.message }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      return jsonResponse(
+        { error: "Kunde inte hitta offerten.", details: quoteError?.message },
+        404,
       );
     }
 
@@ -145,23 +140,23 @@ serve(async (req: Request) => {
         } else {
           const errBody = await pdfRes.text().catch(() => "(could not read body)");
           console.error(`generate-pdf failed: ${pdfRes.status} ${pdfRes.statusText}`, errBody);
-          return new Response(
-            JSON.stringify({
+          return jsonResponse(
+            {
               error: "Kunde inte generera PDF-bilaga",
               pdfStatus: pdfRes.status,
               pdfError: errBody,
-            }),
-            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            },
+            502,
           );
         }
       } catch (pdfErr) {
         console.error("PDF attachment generation threw:", pdfErr);
-        return new Response(
-          JSON.stringify({
+        return jsonResponse(
+          {
             error: "Kunde inte generera PDF-bilaga",
             details: pdfErr instanceof Error ? pdfErr.message : String(pdfErr),
-          }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          },
+          502,
         );
       }
     }
@@ -197,31 +192,25 @@ serve(async (req: Request) => {
           ? String((resendBody as { message?: unknown }).message ?? "Resend request failed")
           : "Resend request failed";
 
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error: errMsg,
           status: resendRes.status,
           statusText: resendRes.statusText,
           resend: resendBody,
-        }),
-        {
-          status: resendRes.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
+        resendRes.status,
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: true, resend: resendBody }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ success: true, resend: resendBody }, 200);
   } catch (error) {
-    console.error("Unexpected error while sending quote", error);
+    console.error(`[${FUNCTION_NAME}] unexpected:`, error);
     const errMessage = error instanceof Error ? error.message : String(error);
 
-    return new Response(
-      JSON.stringify({ error: "Unexpected error while sending quote", message: errMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    return jsonResponse(
+      { error: "Unexpected error while sending quote", message: errMessage },
+      500,
     );
   }
 });

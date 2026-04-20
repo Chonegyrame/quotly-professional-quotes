@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import {
+  authenticate,
+  checkIpRateLimit,
+  corsHeaders,
+  getClientIp,
+  jsonResponse,
+} from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const FUNCTION_NAME = "generate-pdf";
+const IP_LIMIT_PER_HOUR = 50;
 
 const PAGE_W = 595.28; // A4 width in pts
 const PAGE_H = 841.89; // A4 height in pts
@@ -55,31 +59,23 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Use POST" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ error: "Use POST" }, 405);
   }
 
   try {
     const { quoteId } = await req.json();
     if (!quoteId) {
-      return new Response(
-        JSON.stringify({ error: "Missing quoteId" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Missing quoteId" }, 400);
     }
 
     // Permission gate.
     // Two accepted caller types:
-    //  1. The service role (used when send-quote invokes this internally) — trusted, skip RLS check.
-    //  2. A logged-in user — verify they can see the quote through an RLS-scoped client.
+    //  1. The service role (used when send-quote invokes this internally) — trusted, skip further checks.
+    //  2. A logged-in user — verify JWT locally, rate-limit by IP, verify row is visible via RLS.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.error(`[${FUNCTION_NAME}] 401 missing-auth ip=${getClientIp(req)}`);
+      return jsonResponse({ error: "Missing authorization" }, 401);
     }
 
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -87,11 +83,18 @@ Deno.serve(async (req: Request) => {
       serviceRoleKey.length > 0 && authHeader === `Bearer ${serviceRoleKey}`;
 
     if (!isServiceRoleCaller) {
-      const authClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader } } },
+      const auth = await authenticate(req, FUNCTION_NAME);
+      if (!auth.ok) return auth.response;
+      const { ip, authClient, adminClient } = auth;
+
+      const ipResp = await checkIpRateLimit(
+        adminClient,
+        ip,
+        FUNCTION_NAME,
+        IP_LIMIT_PER_HOUR,
+        60,
       );
+      if (ipResp) return ipResp;
 
       const { data: permCheck, error: permError } = await authClient
         .from("quotes")
@@ -100,10 +103,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (permError || !permCheck) {
-        return new Response(
-          JSON.stringify({ error: "Quote not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return jsonResponse({ error: "Quote not found" }, 404);
       }
     }
 
@@ -127,10 +127,7 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (error || !quote) {
-      return new Response(
-        JSON.stringify({ error: "Quote not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Quote not found" }, 404);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -425,10 +422,7 @@ Deno.serve(async (req: Request) => {
       },
     });
   } catch (err) {
-    console.error("generate-pdf error:", err);
-    return new Response(
-      JSON.stringify({ error: "Internt serverfel vid PDF-generering" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    console.error(`[${FUNCTION_NAME}] unexpected:`, err);
+    return jsonResponse({ error: "Internt serverfel vid PDF-generering" }, 500);
   }
 });
