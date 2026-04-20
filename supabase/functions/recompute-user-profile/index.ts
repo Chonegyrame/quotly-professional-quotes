@@ -1,10 +1,13 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  authenticate,
+  checkIpRateLimit,
+  corsHeaders,
+  jsonResponse,
+} from "../_shared/auth.ts";
+import { scoreSharedKeywords } from "../_shared/scoring.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+const FUNCTION_NAME = "recompute-user-profile";
+const IP_LIMIT_PER_HOUR = 30;
 
 // ============================================================
 // Helpers
@@ -39,6 +42,7 @@ interface PatternData {
     frequency: number;
     avg_quantity: number;
     avg_unit_price: number;
+    unit: string;
   }[];
   typical_line_items: {
     description: string;
@@ -46,6 +50,20 @@ interface PatternData {
     avg_labor: number;
   }[];
   avg_total_labor: number;
+  member_quote_ids: string[];
+}
+
+// Pick the most-common unit for a material; first-seen wins on ties.
+function pickDominantUnit(units: Map<string, number>): string {
+  let best = "st";
+  let bestCount = -1;
+  for (const [unit, count] of units) {
+    if (count > bestCount) {
+      best = unit;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 // ============================================================
@@ -67,7 +85,7 @@ function computeTradeProfile(quotes: QuoteWithMaterials[]) {
   // Count material frequency across all quotes
   const materialStats = new Map<
     string,
-    { count: number; totalQty: number; totalPrice: number }
+    { count: number; totalQty: number; totalPrice: number; units: Map<string, number> }
   >();
 
   for (const q of quotes) {
@@ -82,10 +100,13 @@ function computeTradeProfile(quotes: QuoteWithMaterials[]) {
         count: 0,
         totalQty: 0,
         totalPrice: 0,
+        units: new Map<string, number>(),
       };
       existing.count++;
       existing.totalQty += m.quantity;
       existing.totalPrice += m.unit_price;
+      const unitKey = m.unit ?? "st";
+      existing.units.set(unitKey, (existing.units.get(unitKey) ?? 0) + 1);
       materialStats.set(key, existing);
     }
   }
@@ -99,6 +120,7 @@ function computeTradeProfile(quotes: QuoteWithMaterials[]) {
       frequency: Math.round((data.count / total) * 100) / 100,
       avg_quantity: Math.round((data.totalQty / data.count) * 10) / 10,
       avg_unit_price: Math.round(data.totalPrice / data.count),
+      unit: pickDominantUnit(data.units),
     }))
     .sort((a, b) => b.frequency - a.frequency);
 
@@ -138,48 +160,67 @@ function computeTradeProfile(quotes: QuoteWithMaterials[]) {
 }
 
 // ============================================================
-// Layer 2: Detect job patterns via keyword similarity
-// Clusters quotes by shared keywords (job type), then aggregates
-// material and labor data from each cluster.
+// Layer 2: Detect job patterns via keyword similarity.
+// Builds a graph where an edge between two quotes exists when their
+// weighted keyword score (phrase=2, noun=1) is ≥ 3, then takes
+// connected components as clusters. Order-independent — same input
+// produces the same clusters regardless of array order.
 // ============================================================
-
-function countSharedKeywords(a: string[], b: string[]): number {
-  const setB = new Set(b);
-  return a.filter((kw) => setB.has(kw)).length;
-}
 
 function detectPatterns(quotes: QuoteWithMaterials[]): PatternData[] {
   if (quotes.length < 2) return [];
 
   const patterns: PatternData[] = [];
-  const assigned = new Set<string>();
 
-  // Sort by keyword count descending — quotes with more keywords as seeds
-  const sorted = [...quotes]
-    .filter((q) => (q.keywords ?? []).length > 0)
-    .sort((a, b) => (b.keywords ?? []).length - (a.keywords ?? []).length);
+  // Only quotes with keywords can participate in clustering.
+  const eligible = quotes.filter((q) => (q.keywords ?? []).length > 0);
+  if (eligible.length < 2) return [];
 
-  for (const seed of sorted) {
-    if (assigned.has(seed.id)) continue;
-    const seedKw = seed.keywords ?? [];
-    if (seedKw.length === 0) continue;
+  // Union-Find over eligible quotes.
+  const parent: number[] = eligible.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  const union = (i: number, j: number): void => {
+    const ri = find(i);
+    const rj = find(j);
+    if (ri !== rj) parent[ri] = rj;
+  };
 
-    // Find all quotes that share 2+ keywords with this seed
-    const group: QuoteWithMaterials[] = [seed];
-    for (const candidate of sorted) {
-      if (candidate.id === seed.id || assigned.has(candidate.id)) continue;
-      const candidateKw = candidate.keywords ?? [];
-      if (candidateKw.length === 0) continue;
-      if (countSharedKeywords(seedKw, candidateKw) >= 2) {
-        group.push(candidate);
+  // Edges: every unordered pair with weighted score ≥ 3.
+  for (let i = 0; i < eligible.length; i++) {
+    for (let j = i + 1; j < eligible.length; j++) {
+      if (scoreSharedKeywords(eligible[i].keywords, eligible[j].keywords) >= 3) {
+        union(i, j);
       }
     }
+  }
 
-    // Only keep groups of 2+ (lowered from 3 — keyword clustering is
-    // more reliable so we can form patterns earlier)
-    if (group.length < 2) continue;
+  // Collect components, preserving the original quote order within each.
+  const components = new Map<number, QuoteWithMaterials[]>();
+  for (let i = 0; i < eligible.length; i++) {
+    const root = find(i);
+    const existing = components.get(root) ?? [];
+    existing.push(eligible[i]);
+    components.set(root, existing);
+  }
 
-    for (const q of group) assigned.add(q.id);
+  // Deterministic iteration order: sort components by their smallest
+  // member's id so output does not depend on Map insertion order.
+  const sortedComponents = [...components.values()].sort((a, b) => {
+    const aMin = a.map((q) => q.id).sort()[0];
+    const bMin = b.map((q) => q.id).sort()[0];
+    return aMin < bMin ? -1 : aMin > bMin ? 1 : 0;
+  });
+
+  for (const group of sortedComponents) {
+    // Minimum cluster size is 3 — 2-member clusters are too noisy to
+    // emit as a recurring pattern.
+    if (group.length < 3) continue;
 
     // Build pattern from group
     const groupSize = group.length;
@@ -201,7 +242,7 @@ function detectPatterns(quotes: QuoteWithMaterials[]): PatternData[] {
     // a 30% threshold still means the material shows up consistently)
     const matCounts = new Map<
       string,
-      { count: number; totalQty: number; totalPrice: number }
+      { count: number; totalQty: number; totalPrice: number; units: Map<string, number> }
     >();
     for (const q of group) {
       const seen = new Set<string>();
@@ -213,10 +254,13 @@ function detectPatterns(quotes: QuoteWithMaterials[]): PatternData[] {
           count: 0,
           totalQty: 0,
           totalPrice: 0,
+          units: new Map<string, number>(),
         };
         existing.count++;
         existing.totalQty += m.quantity;
         existing.totalPrice += m.unit_price;
+        const unitKey = m.unit ?? "st";
+        existing.units.set(unitKey, (existing.units.get(unitKey) ?? 0) + 1);
         matCounts.set(key, existing);
       }
     }
@@ -228,6 +272,7 @@ function detectPatterns(quotes: QuoteWithMaterials[]): PatternData[] {
         frequency: Math.round((data.count / groupSize) * 100) / 100,
         avg_quantity: Math.round((data.totalQty / data.count) * 10) / 10,
         avg_unit_price: Math.round(data.totalPrice / data.count),
+        unit: pickDominantUnit(data.units),
       }))
       .sort((a, b) => b.frequency - a.frequency);
 
@@ -262,6 +307,7 @@ function detectPatterns(quotes: QuoteWithMaterials[]): PatternData[] {
       common_materials: commonMaterials,
       typical_line_items: typicalItems,
       avg_total_labor: avgLabor,
+      member_quote_ids: group.map((q) => q.id),
     });
   }
 
@@ -320,36 +366,21 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed" }),
-        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    // Auth
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const auth = await authenticate(req, FUNCTION_NAME);
+    if (!auth.ok) return auth.response;
+    const { userId, ip, authClient, adminClient } = auth;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
     );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (ipResp) return ipResp;
 
     const { quote_id, company_id, trade } = (await req.json()) as {
       quote_id: string;
@@ -358,16 +389,13 @@ Deno.serve(async (req: Request) => {
     };
 
     if (!company_id || !trade) {
-      return new Response(
-        JSON.stringify({ error: "Missing company_id or trade" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Missing company_id or trade" }, 400);
     }
 
     // --------------------------------------------------------
     // Fetch all sent quotes for this user + trade
     // --------------------------------------------------------
-    const { data: allQuotes } = await supabase
+    const { data: allQuotes } = await adminClient
       .from("quotes")
       .select(
         "id, keywords, ai_suggestions, quote_items(description, unit_price, quote_item_materials(name, quantity, unit_price, unit))"
@@ -420,7 +448,7 @@ Deno.serve(async (req: Request) => {
     );
 
     // Also include accepted and completed quotes in the dataset
-    const { data: otherQuotes } = await supabase
+    const { data: otherQuotes } = await adminClient
       .from("quotes")
       .select(
         "id, keywords, ai_suggestions, quote_items(description, unit_price, quote_item_materials(name, quantity, unit_price, unit))"
@@ -478,9 +506,9 @@ Deno.serve(async (req: Request) => {
     // --------------------------------------------------------
     const profile = computeTradeProfile(quotesWithMaterials);
 
-    await supabase.from("user_trade_profiles").upsert(
+    await authClient.from("user_trade_profiles").upsert(
       {
-        user_id: user.id,
+        user_id: userId,
         trade,
         total_quotes: profile.total_quotes,
         common_materials: profile.common_materials,
@@ -500,22 +528,23 @@ Deno.serve(async (req: Request) => {
     const patterns = detectPatterns(quotesWithMaterials);
 
     // Delete old patterns for this user+trade, then insert fresh
-    await supabase
+    await adminClient
       .from("user_job_patterns")
       .delete()
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("trade", trade);
 
     if (patterns.length > 0) {
-      await supabase.from("user_job_patterns").insert(
+      await authClient.from("user_job_patterns").insert(
         patterns.map((p) => ({
-          user_id: user.id,
+          user_id: userId,
           trade,
           pattern_keywords: p.pattern_keywords,
           occurrence_count: p.occurrence_count,
           common_materials: p.common_materials,
           typical_line_items: p.typical_line_items,
           avg_total_labor: p.avg_total_labor,
+          member_quote_ids: p.member_quote_ids,
           last_updated_at: new Date().toISOString(),
         }))
       );
@@ -527,7 +556,7 @@ Deno.serve(async (req: Request) => {
     if (quote_id) {
       const thisQuote = quotesWithMaterials.find((q) => q.id === quote_id);
       if (thisQuote) {
-        await supabase
+        await adminClient
           .from("quotes")
           .update({ material_fingerprint: thisQuote.fingerprint })
           .eq("id", quote_id);
@@ -562,33 +591,60 @@ Deno.serve(async (req: Request) => {
           material_name: string;
           learning_type: string;
           added_at: string;
+          quote_id: string;
         }[] = [];
 
         for (const materialName of additions) {
           learningRows.push({
-            user_id: user.id,
+            user_id: userId,
             trade,
             job_keywords: quoteKeywords,
             material_name: materialName,
             learning_type: "addition",
             added_at: new Date().toISOString(),
+            quote_id,
           });
         }
 
         for (const materialName of removals) {
           learningRows.push({
-            user_id: user.id,
+            user_id: userId,
             trade,
             job_keywords: quoteKeywords,
             material_name: materialName,
             learning_type: "removal",
             added_at: new Date().toISOString(),
+            quote_id,
           });
         }
 
+        // Dedupe on re-send: remove any existing learnings for this
+        // quote, then upsert with ignoreDuplicates so concurrent
+        // recomputes don't crash on the partial unique index.
+        await adminClient
+          .from("user_material_learnings")
+          .delete()
+          .eq("quote_id", quote_id);
+
         if (learningRows.length > 0) {
-          await supabase.from("user_material_learnings").insert(learningRows);
+          await authClient
+            .from("user_material_learnings")
+            .upsert(learningRows, {
+              onConflict: "quote_id,material_name,learning_type",
+              ignoreDuplicates: true,
+            });
         }
+
+        // Stash material-level edit counts on the quote row for
+        // AI-offertkvalitet stats. Purely observational — nothing reads
+        // these columns outside the Analytics page.
+        await adminClient
+          .from("quotes")
+          .update({
+            ai_materials_added: additions.length,
+            ai_materials_removed: removals.length,
+          })
+          .eq("id", quote_id);
       }
     }
 

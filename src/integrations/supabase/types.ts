@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_idempotency_cache: {
+        Row: {
+          created_at: string
+          input_hash: string
+          request_id: string
+          response: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          input_hash: string
+          request_id: string
+          response: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          input_hash?: string
+          request_id?: string
+          response?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_ip_usage: {
+        Row: {
+          function_name: string
+          id: number
+          ip: string
+          used_at: string
+        }
+        Insert: {
+          function_name: string
+          id?: number
+          ip: string
+          used_at?: string
+        }
+        Update: {
+          function_name?: string
+          id?: number
+          ip?: string
+          used_at?: string
+        }
+        Relationships: []
+      }
+      ai_usage: {
+        Row: {
+          id: string
+          used_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          used_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          used_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           address: string | null
@@ -22,6 +85,7 @@ export type Database = {
           default_validity_days: number
           default_vat: number
           email: string | null
+          email_template: string | null
           id: string
           logo_url: string | null
           name: string
@@ -36,6 +100,7 @@ export type Database = {
           default_validity_days?: number
           default_vat?: number
           email?: string | null
+          email_template?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -50,6 +115,7 @@ export type Database = {
           default_validity_days?: number
           default_vat?: number
           email?: string | null
+          email_template?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -157,7 +223,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          is_deleted: boolean`r`n          markup_percent: number
+          markup_percent: number
           material_id: string | null
           name: string
           purchase_price: number
@@ -170,7 +236,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
-          is_deleted?: boolean`r`n          markup_percent?: number
+          markup_percent?: number
           material_id?: string | null
           name?: string
           purchase_price?: number
@@ -183,7 +249,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
-          is_deleted?: boolean`r`n          markup_percent?: number
+          markup_percent?: number
           material_id?: string | null
           name?: string
           purchase_price?: number
@@ -290,6 +356,8 @@ export type Database = {
         Row: {
           accepted_at: string | null
           actual_hours: number | null
+          ai_materials_added: number | null
+          ai_materials_removed: number | null
           ai_suggestions: Json | null
           company_id: string
           completed_at: string | null
@@ -302,6 +370,8 @@ export type Database = {
           estimated_days: number | null
           estimated_hours: number | null
           id: string
+          job_size: number | null
+          job_size_unit: string | null
           keywords: string[] | null
           material_fingerprint: string[] | null
           notes: string | null
@@ -315,6 +385,8 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           actual_hours?: number | null
+          ai_materials_added?: number | null
+          ai_materials_removed?: number | null
           ai_suggestions?: Json | null
           company_id: string
           completed_at?: string | null
@@ -327,6 +399,8 @@ export type Database = {
           estimated_days?: number | null
           estimated_hours?: number | null
           id?: string
+          job_size?: number | null
+          job_size_unit?: string | null
           keywords?: string[] | null
           material_fingerprint?: string[] | null
           notes?: string | null
@@ -340,6 +414,8 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           actual_hours?: number | null
+          ai_materials_added?: number | null
+          ai_materials_removed?: number | null
           ai_suggestions?: Json | null
           company_id?: string
           completed_at?: string | null
@@ -352,6 +428,8 @@ export type Database = {
           estimated_days?: number | null
           estimated_hours?: number | null
           id?: string
+          job_size?: number | null
+          job_size_unit?: string | null
           keywords?: string[] | null
           material_fingerprint?: string[] | null
           notes?: string | null
@@ -372,102 +450,161 @@ export type Database = {
           },
         ]
       }
-      user_trade_profiles: {
+      trade_materials: {
         Row: {
+          category: string
+          created_at: string
           id: string
-          user_id: string
-          trade: string
-          total_quotes: number
-          common_materials: Json
-          typical_labor_min: number
-          typical_labor_max: number
-          typical_labor_avg: number
-          last_computed_at: string
+          is_active: boolean
+          markup_percent: number
+          name: string
+          purchase_price: number
+          unit: string
+          unit_price: number
         }
         Insert: {
+          category: string
+          created_at?: string
           id?: string
-          user_id: string
-          trade: string
-          total_quotes?: number
-          common_materials?: Json
-          typical_labor_min?: number
-          typical_labor_max?: number
-          typical_labor_avg?: number
-          last_computed_at?: string
+          is_active?: boolean
+          markup_percent?: number
+          name: string
+          purchase_price?: number
+          unit?: string
+          unit_price?: number
         }
         Update: {
+          category?: string
+          created_at?: string
           id?: string
-          user_id?: string
-          trade?: string
-          total_quotes?: number
-          common_materials?: Json
-          typical_labor_min?: number
-          typical_labor_max?: number
-          typical_labor_avg?: number
-          last_computed_at?: string
+          is_active?: boolean
+          markup_percent?: number
+          name?: string
+          purchase_price?: number
+          unit?: string
+          unit_price?: number
         }
         Relationships: []
       }
       user_job_patterns: {
         Row: {
-          id: string
-          user_id: string
-          trade: string
-          pattern_keywords: string[]
-          occurrence_count: number
-          common_materials: Json
-          typical_line_items: Json
           avg_total_labor: number
+          common_materials: Json
+          id: string
           last_updated_at: string
+          member_quote_ids: string[] | null
+          occurrence_count: number
+          pattern_keywords: string[]
+          trade: string
+          typical_line_items: Json
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          trade: string
-          pattern_keywords?: string[]
-          occurrence_count?: number
-          common_materials?: Json
-          typical_line_items?: Json
           avg_total_labor?: number
+          common_materials?: Json
+          id?: string
           last_updated_at?: string
+          member_quote_ids?: string[] | null
+          occurrence_count?: number
+          pattern_keywords?: string[]
+          trade: string
+          typical_line_items?: Json
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          trade?: string
-          pattern_keywords?: string[]
-          occurrence_count?: number
-          common_materials?: Json
-          typical_line_items?: Json
           avg_total_labor?: number
+          common_materials?: Json
+          id?: string
           last_updated_at?: string
+          member_quote_ids?: string[] | null
+          occurrence_count?: number
+          pattern_keywords?: string[]
+          trade?: string
+          typical_line_items?: Json
+          user_id?: string
         }
         Relationships: []
       }
       user_material_learnings: {
         Row: {
-          id: string
-          user_id: string
-          trade: string
-          job_keywords: string[]
-          material_name: string
           added_at: string
+          id: string
+          job_keywords: string[]
+          learning_type: string
+          material_name: string
+          quote_id: string | null
+          trade: string
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          trade: string
-          job_keywords?: string[]
-          material_name: string
           added_at?: string
+          id?: string
+          job_keywords?: string[]
+          learning_type?: string
+          material_name: string
+          quote_id?: string | null
+          trade: string
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          trade?: string
-          job_keywords?: string[]
-          material_name?: string
           added_at?: string
+          id?: string
+          job_keywords?: string[]
+          learning_type?: string
+          material_name?: string
+          quote_id?: string | null
+          trade?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_material_learnings_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_trade_profiles: {
+        Row: {
+          common_materials: Json
+          id: string
+          last_computed_at: string
+          total_quotes: number
+          trade: string
+          typical_labor_avg: number
+          typical_labor_max: number
+          typical_labor_min: number
+          typical_labor_p10: number
+          typical_labor_p90: number
+          user_id: string
+        }
+        Insert: {
+          common_materials?: Json
+          id?: string
+          last_computed_at?: string
+          total_quotes?: number
+          trade: string
+          typical_labor_avg?: number
+          typical_labor_max?: number
+          typical_labor_min?: number
+          typical_labor_p10?: number
+          typical_labor_p90?: number
+          user_id: string
+        }
+        Update: {
+          common_materials?: Json
+          id?: string
+          last_computed_at?: string
+          total_quotes?: number
+          trade?: string
+          typical_labor_avg?: number
+          typical_labor_max?: number
+          typical_labor_min?: number
+          typical_labor_p10?: number
+          typical_labor_p90?: number
+          user_id?: string
         }
         Relationships: []
       }
@@ -476,6 +613,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_ai_usage_slot: {
+        Args: { p_daily_limit: number; p_user_id: string }
+        Returns: boolean
+      }
       get_next_quote_number: { Args: { p_company_id: string }; Returns: string }
     }
     Enums: {
@@ -609,8 +750,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-
-
-
-

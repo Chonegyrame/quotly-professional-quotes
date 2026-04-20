@@ -1,12 +1,16 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  authenticate,
+  checkGlobalAiCeiling,
+  checkIpRateLimit,
+  corsHeaders,
+  jsonResponse,
+} from "../_shared/auth.ts";
+import { scoreSharedKeywords } from "../_shared/scoring.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
+const FUNCTION_NAME = "generate-quote";
 const DAILY_LIMIT = 20;
+const IP_LIMIT_PER_HOUR = 10;
+const GLOBAL_AI_CEILING_24H = 500;
 
 const TRADE_LABELS: Record<string, string> = {
   bygg: "bygg",
@@ -15,8 +19,20 @@ const TRADE_LABELS: Record<string, string> = {
   general: "hantverks",
 };
 
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  const bytes = new Uint8Array(buf);
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
 // ============================================================
-// Keyword extraction (Haiku) — purely literal, no inference
+// Keyword extraction (Haiku) — dual-token: verb+noun phrases + standalone nouns.
+// Keep this prompt in sync with supabase/functions/extract-keywords/index.ts.
 // ============================================================
 
 async function extractKeywords(
@@ -25,12 +41,30 @@ async function extractKeywords(
   anthropicApiKey: string,
 ): Promise<string[]> {
   const extractionPrompt =
-    "Extrahera jobbspecifika nyckelord från denna kundförfrågan. " +
-    "Returnera ENBART ett JSON-array med substantiv i grundform som beskriver specifika material, komponenter eller installationer. " +
-    "Inkludera endast konkreta fysiska objekt — exempelvis ['element', 'kopparrör', 'elcentral', 'golvbrunn']. " +
-    "Uteslut verb, adjektiv och vaga ord som 'problem', 'byta', 'trasig', 'gammal'. " +
-    "Om inga relevanta nyckelord finns, returnera []. " +
-    "Returnera ENBART JSON-arrayen, inget annat.";
+    "Extrahera jobbspecifika nyckelord från denna kundförfrågan.\n\n" +
+    "ABSOLUT REGEL (överordnad alla andra):\n" +
+    "Skapa ENDAST en verb+substantiv-fras om verbet står ORDAGRANT skrivet som ett ord i texten. " +
+    "Gissa aldrig ett verb — även om sammanhanget gör det uppenbart vad som ska göras. " +
+    "Om verbet inte finns ordagrant, emittera ENDAST substantivet.\n\n" +
+    "Exempel:\n" +
+    "- \"Byta element i köket\" → [\"byta_element\",\"element\",\"kök\"]\n" +
+    "  (verbet \"byta\" finns i texten → fras tillåten)\n" +
+    "- \"Badrumsrenovering med nytt kakel och ny dusch\" → [\"renovering\",\"badrum\",\"kakel\",\"dusch\"]\n" +
+    "  (inga verb i texten → INGA fraser, inte ens \"lägga_kakel\" eller \"installera_dusch\")\n" +
+    "- \"Måla vardagsrum\" → [\"måla_vardagsrum\",\"vardagsrum\"]\n" +
+    "  (verbet \"måla\" finns i texten → fras tillåten)\n\n" +
+    "Format:\n" +
+    "1. Fraser: verb_substantiv, understreck, verbet i infinitiv, substantivet i singular obestämd.\n" +
+    "2. Substantiv i grundform (singular, obestämd).\n" +
+    "3. När en fras emitteras, inkludera också substantivet separat.\n\n" +
+    "Övriga regler:\n" +
+    "- Dela svenska sammansättningar (badrumsrenovering → renovering + badrum).\n" +
+    "- Tvinga singular obestämd (elkablar → elkabel; garaget → garage).\n" +
+    "- Platser (kök, badrum, garage) → endast substantiv.\n" +
+    "- Jobbtyper utan verb (renovering, nyinstallation, reparation) → endast substantiv.\n" +
+    "- Uteslut vaga ord (problem, trasig, gammal, sönder).\n" +
+    "- Om inga relevanta nyckelord finns, returnera [].\n" +
+    "- Returnera ENBART ett JSON-array med strängar i små bokstäver. Inget annat.";
 
   const content = image
     ? [
@@ -49,6 +83,7 @@ async function extractKeywords(
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 256,
+      temperature: 0,
       messages: [{ role: "user", content }],
     }),
   });
@@ -75,7 +110,7 @@ function buildLayer1Section(profile: any): string {
 
   const materials = (profile.common_materials ?? [])
     .slice(0, 10)
-    .map((m: any) => `- ${m.name} (${Math.round(m.frequency * 100)}% av offerter, snitt ${m.avg_quantity} ${m.avg_unit_price} kr)`)
+    .map((m: any) => `- ${m.name} (${Math.round(m.frequency * 100)}% av offerter, snitt ${m.avg_quantity} ${m.unit ?? "st"} à ${m.avg_unit_price} kr)`)
     .join("\n");
 
   if (!materials) return "";
@@ -90,12 +125,16 @@ Typiskt arbetsintervall: ${laborMin}–${laborMax} kr (snitt: ${profile.typical_
 `;
 }
 
-function buildLayer2Section(pattern: any): string {
-  if (!pattern) return "";
+function buildSingleLayer2Block(pattern: any, includeUnscaledLabel: boolean = false): string {
+  const materialSuffix = includeUnscaledLabel ? " (historiskt snitt, ej storleksjusterad)" : "";
+  const laborSuffix = includeUnscaledLabel ? " (historiskt snitt)" : "";
+  const trailingNote = includeUnscaledLabel
+    ? "\n(För storleksjusterad prissättning, se STORLEKSJUSTERAD REFERENS nedan.)"
+    : "";
 
   const materials = (pattern.common_materials ?? [])
     .slice(0, 8)
-    .map((m: any) => `- ${m.name}: ${Math.round(m.frequency * 100)}% av jobb, snitt ${m.avg_quantity} st à ${m.avg_unit_price} kr`)
+    .map((m: any) => `- ${m.name}: ${Math.round(m.frequency * 100)}% av jobb, snitt ${m.avg_quantity} ${m.unit ?? "st"} à ${m.avg_unit_price} kr${materialSuffix}`)
     .join("\n");
 
   const items = (pattern.typical_line_items ?? [])
@@ -115,8 +154,18 @@ ${pattern.occurrence_count >= 5
     : "Använd som referens, inte som strikt mall."}
 ${items ? `Typiska arbetsrader:\n${items}` : ""}
 ${materials ? `Vanliga material:\n${materials}` : ""}
-Snitt totalt arbete: ${pattern.avg_total_labor} kr
+Snitt totalt arbete: ${pattern.avg_total_labor} kr${laborSuffix}${trailingNote}
 `;
+}
+
+function buildLayer2Section(patterns: any[], opts: { includeUnscaledLabel?: boolean } = {}): string {
+  if (!patterns || patterns.length === 0) {
+    return `--- INGEN LIKNANDE TIDIGARE OFFERT HITTADES ---
+Inga tillräckligt liknande tidigare jobb i användarens historik. Använd branschstandard och inputen som enda grund.
+`;
+  }
+  const includeUnscaledLabel = opts.includeUnscaledLabel ?? false;
+  return patterns.map((p) => buildSingleLayer2Block(p, includeUnscaledLabel)).join("\n");
 }
 
 function buildLayer4Section(
@@ -192,6 +241,361 @@ function buildLayer4Section(
 }
 
 // ============================================================
+// Layer 5 (size-scaled ratios) + keyword sub-aggregate helpers.
+// Both operate on raw cluster member rows fetched at generate time.
+// ============================================================
+
+function scopeMembersToPattern(members: any[], pattern: any): any[] {
+  const memberIds: string[] | null = Array.isArray(pattern.member_quote_ids)
+    ? pattern.member_quote_ids
+    : null;
+  if (memberIds && memberIds.length > 0) {
+    const idSet = new Set(memberIds);
+    return members.filter((m: any) => idSet.has(m.id));
+  }
+  // Legacy fallback: pre-migration rows have NULL member_quote_ids.
+  // Rebuild membership via keyword score until the user's next send
+  // repopulates the column.
+  console.warn("[generate-quote] legacy pattern fallback — no member_quote_ids");
+  const patternKw: string[] = pattern.pattern_keywords ?? [];
+  if (patternKw.length === 0) return [];
+  return members.filter((m: any) => {
+    const memKw: string[] = m.keywords ?? [];
+    return scoreSharedKeywords(patternKw, memKw) >= 3;
+  });
+}
+
+function sumMemberLabor(m: any): number {
+  let sum = 0;
+  for (const it of m.quote_items ?? []) sum += Number(it.unit_price ?? 0);
+  return sum;
+}
+
+function aggregateMemberMaterials(
+  m: any,
+): Map<string, { quantity: number; unit: string; unit_price: number }> {
+  const map = new Map<string, { quantity: number; unit: string; unit_price: number }>();
+  for (const it of m.quote_items ?? []) {
+    for (const mat of it.quote_item_materials ?? []) {
+      const key = String(mat.name ?? "").trim().toLowerCase();
+      if (!key) continue;
+      const qty = Number(mat.quantity ?? 0);
+      const unit = String(mat.unit ?? "st");
+      const price = Number(mat.unit_price ?? 0);
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        map.set(key, { quantity: qty, unit, unit_price: price });
+      }
+    }
+  }
+  return map;
+}
+
+function buildLayer5Section(
+  _pattern: any,
+  scopedMembers: any[],
+  input: { job_size?: number | null; job_size_unit?: string | null },
+): string {
+  const size = typeof input.job_size === "number" ? input.job_size : 0;
+  const unit = input.job_size_unit;
+  if (!size || size <= 0 || !unit) return "";
+
+  const candidates = scopedMembers.filter(
+    (m: any) =>
+      typeof m.job_size === "number" &&
+      m.job_size > 0 &&
+      m.job_size_unit === unit,
+  );
+
+  const smaller = candidates
+    .filter((m: any) => m.job_size < size)
+    .sort((a: any, b: any) => b.job_size - a.job_size)
+    .slice(0, 2);
+  const larger = candidates
+    .filter((m: any) => m.job_size > size)
+    .sort((a: any, b: any) => a.job_size - b.job_size)
+    .slice(0, 2);
+
+  // Prefer strong tier (2 + 2 bracketed). Fall back to weak tier when
+  // only one side has ≥2 neighbors (input is larger/smaller than all
+  // history). Weak tier skips the CV filter because a 2-point variance
+  // isn't meaningful signal.
+  let neighbors: any[];
+  let isWeakTier = false;
+  let weakSide: "mindre" | "större" | "" = "";
+  if (smaller.length >= 2 && larger.length >= 2) {
+    neighbors = [...smaller, ...larger];
+  } else if (smaller.length >= 2) {
+    neighbors = smaller;
+    isWeakTier = true;
+    weakSide = "mindre";
+  } else if (larger.length >= 2) {
+    neighbors = larger;
+    isWeakTier = true;
+    weakSide = "större";
+  } else {
+    return "";
+  }
+
+  const perMember = neighbors.map((m: any) => ({
+    size: Number(m.job_size),
+    materials: aggregateMemberMaterials(m),
+  }));
+
+  const allNames = new Set<string>();
+  for (const pm of perMember) for (const name of pm.materials.keys()) allNames.add(name);
+
+  const materialLines: string[] = [];
+  for (const name of allNames) {
+    const appearances: { qty: number; size: number; unit: string }[] = [];
+    let firstUnit = "";
+    let inconsistentUnit = false;
+    for (const pm of perMember) {
+      const entry = pm.materials.get(name);
+      if (!entry) continue;
+      if (!firstUnit) {
+        firstUnit = entry.unit;
+      } else if (firstUnit !== entry.unit) {
+        inconsistentUnit = true;
+        break;
+      }
+      appearances.push({ qty: entry.quantity, size: pm.size, unit: entry.unit });
+    }
+    if (inconsistentUnit) continue;
+    if (appearances.length < 2) continue;
+
+    const ratios = appearances.map((a) => a.qty / a.size);
+    const mean = ratios.reduce((s, v) => s + v, 0) / ratios.length;
+    if (mean === 0) continue;
+    if (!isWeakTier) {
+      const variance = ratios.reduce((s, v) => s + (v - mean) ** 2, 0) / ratios.length;
+      const cv = Math.sqrt(variance) / mean;
+      if (cv >= 0.3) continue;
+    }
+
+    const ratioFmt = Math.round(mean * 100) / 100;
+    const absFmt = Math.round(mean * size * 10) / 10;
+    materialLines.push(`- ${name}: ${ratioFmt} ${firstUnit} per ${unit} → ~${absFmt} ${firstUnit}`);
+  }
+
+  const laborRatios = neighbors.map(
+    (m: any) => sumMemberLabor(m) / Number(m.job_size),
+  );
+  const avgLaborRatio = laborRatios.reduce((s, v) => s + v, 0) / laborRatios.length;
+  const multipliedLabor = Math.round(avgLaborRatio * size);
+  const laborQualifies = avgLaborRatio > 0 && multipliedLabor > 0;
+
+  if (materialLines.length === 0 && !laborQualifies) return "";
+
+  const neighborSizes = neighbors.map((m: any) => m.job_size).join("/");
+  const headerDetail = isWeakTier
+    ? `baserad på 2 ${weakSide} jobb: ${neighborSizes} — extrapolerad`
+    : `4 jämförbara jobb: ${neighborSizes}`;
+  let block = `--- STORLEKSJUSTERAD REFERENS (${size} ${unit}, ${headerDetail}) ---\n`;
+  if (materialLines.length > 0) block += materialLines.join("\n") + "\n";
+  if (laborQualifies) {
+    block += `Arbete: ${Math.round(avgLaborRatio)} kr per ${unit} → ~${multipliedLabor} kr\n`;
+  }
+  return block;
+}
+
+function buildSingleSubAggregateBlock(
+  keyword: string,
+  filtered: any[],
+  totalInCluster: number,
+  topAvgLabor: number,
+): string {
+  const groupSize = filtered.length;
+
+  const matCounts = new Map<
+    string,
+    { count: number; totalQty: number; totalPrice: number; units: Map<string, number> }
+  >();
+  for (const m of filtered) {
+    const seen = new Set<string>();
+    for (const it of m.quote_items ?? []) {
+      for (const mat of it.quote_item_materials ?? []) {
+        const name = String(mat.name ?? "").trim().toLowerCase();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const existing = matCounts.get(name) ?? {
+          count: 0,
+          totalQty: 0,
+          totalPrice: 0,
+          units: new Map<string, number>(),
+        };
+        existing.count++;
+        existing.totalQty += Number(mat.quantity ?? 0);
+        existing.totalPrice += Number(mat.unit_price ?? 0);
+        const u = String(mat.unit ?? "st");
+        existing.units.set(u, (existing.units.get(u) ?? 0) + 1);
+        matCounts.set(name, existing);
+      }
+    }
+  }
+  const matThreshold = groupSize * 0.3;
+  const commonMaterials = [...matCounts.entries()]
+    .filter(([_, d]) => d.count >= matThreshold)
+    .map(([name, d]) => {
+      let bestUnit = "st";
+      let bestCount = -1;
+      for (const [u, c] of d.units) {
+        if (c > bestCount) { bestUnit = u; bestCount = c; }
+      }
+      return {
+        name,
+        frequency: Math.round((d.count / groupSize) * 100),
+        avg_quantity: Math.round((d.totalQty / d.count) * 10) / 10,
+        avg_unit_price: Math.round(d.totalPrice / d.count),
+        unit: bestUnit,
+      };
+    })
+    .sort((a, b) => b.frequency - a.frequency);
+
+  const itemCounts = new Map<string, { count: number; totalLabor: number }>();
+  for (const m of filtered) {
+    for (const it of m.quote_items ?? []) {
+      const key = String(it.description ?? "").trim().toLowerCase();
+      if (!key) continue;
+      const existing = itemCounts.get(key) ?? { count: 0, totalLabor: 0 };
+      existing.count++;
+      existing.totalLabor += Number(it.unit_price ?? 0);
+      itemCounts.set(key, existing);
+    }
+  }
+  const itemThreshold = groupSize * 0.3;
+  const typicalItems = [...itemCounts.entries()]
+    .filter(([_, d]) => d.count >= itemThreshold)
+    .map(([description, d]) => ({
+      description,
+      frequency: Math.round((d.count / groupSize) * 100),
+      avg_labor: Math.round(d.totalLabor / d.count),
+    }))
+    .sort((a, b) => b.frequency - a.frequency);
+
+  const subAvgLabor = Math.round(
+    filtered.reduce((s: number, m: any) => s + sumMemberLabor(m), 0) / groupSize,
+  );
+
+  const addCounts = new Map<string, number>();
+  const remCounts = new Map<string, number>();
+  for (const m of filtered) {
+    const ai = m.ai_suggestions;
+    if (!ai || !Array.isArray(ai.items)) continue;
+    const aiNames = new Set<string>();
+    for (const it of ai.items) {
+      for (const mat of it.materials ?? []) {
+        const n = String(mat.name ?? "").trim().toLowerCase();
+        if (n) aiNames.add(n);
+      }
+    }
+    const savedNames = new Set<string>();
+    for (const it of m.quote_items ?? []) {
+      for (const mat of it.quote_item_materials ?? []) {
+        const n = String(mat.name ?? "").trim().toLowerCase();
+        if (n) savedNames.add(n);
+      }
+    }
+    for (const n of savedNames) {
+      if (!aiNames.has(n)) addCounts.set(n, (addCounts.get(n) ?? 0) + 1);
+    }
+    for (const n of aiNames) {
+      if (!savedNames.has(n)) remCounts.set(n, (remCounts.get(n) ?? 0) + 1);
+    }
+  }
+  const corrThreshold = Math.max(2, Math.ceil(groupSize * 0.4));
+  const additions = [...addCounts.entries()]
+    .filter(([_, c]) => c >= corrThreshold)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  const removals = [...remCounts.entries()]
+    .filter(([_, c]) => c >= corrThreshold)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const tinySampleCaveat =
+    groupSize === 2 && totalInCluster > 0 && groupSize / totalInCluster < 0.05
+      ? ", litet urval, använd som vägledning"
+      : "";
+  let block = `--- SPECIFIKT FÖR ${keyword.toUpperCase()} (${groupSize} jobb av ${totalInCluster}${tinySampleCaveat}) ---\n`;
+
+  if (commonMaterials.length > 0) {
+    block += `Vanliga material (endast dessa jobb):\n`;
+    for (const mat of commonMaterials.slice(0, 8)) {
+      block += `- ${mat.name}: ${mat.frequency}% av dessa jobb, snitt ${mat.avg_quantity} ${mat.unit ?? "st"} à ${mat.avg_unit_price} kr\n`;
+    }
+  }
+
+  if (typicalItems.length > 0) {
+    block += `Typiska arbetsrader:\n`;
+    for (const it of typicalItems.slice(0, 6)) {
+      block += `- ${it.description} (snitt ${it.avg_labor} kr arbete)\n`;
+    }
+  }
+
+  block += `Snitt totalt arbete: ${subAvgLabor} kr (top-level var ${topAvgLabor} kr)\n`;
+
+  if (additions.length > 0 || removals.length > 0) {
+    block += `Användarkorrektioner:\n`;
+    if (additions.length > 0) {
+      block += `  Tillägg:\n`;
+      for (const [name, count] of additions) {
+        block += `  - ${name} — tillagt i ${count} av ${groupSize} jobb\n`;
+      }
+    }
+    if (removals.length > 0) {
+      block += `  Borttagningar:\n`;
+      for (const [name, count] of removals) {
+        block += `  - ${name} — borttaget i ${count} av ${groupSize} jobb\n`;
+      }
+    }
+  }
+
+  return block;
+}
+
+function buildSubAggregateSections(
+  pattern: any,
+  scopedMembers: any[],
+  inputKeywords: string[],
+): string {
+  if (scopedMembers.length === 0 || inputKeywords.length === 0) return "";
+  const patternKwSet = new Set<string>(pattern.pattern_keywords ?? []);
+  const totalInCluster = scopedMembers.length;
+  const topAvgLabor = Number(pattern.avg_total_labor ?? 0);
+
+  const candidates: { keyword: string; members: any[] }[] = [];
+  for (const kw of inputKeywords) {
+    if (patternKwSet.has(kw)) continue;
+    const filtered = scopedMembers.filter((m: any) =>
+      Array.isArray(m.keywords) && m.keywords.includes(kw),
+    );
+    if (filtered.length < 2) continue;
+    candidates.push({ keyword: kw, members: filtered });
+  }
+
+  if (candidates.length === 0) return "";
+
+  candidates.sort((a, b) => b.members.length - a.members.length);
+  const kept = candidates.slice(0, 2);
+
+  const blocks: string[] = [];
+  for (const cand of kept) {
+    const block = buildSingleSubAggregateBlock(
+      cand.keyword,
+      cand.members,
+      totalInCluster,
+      topAvgLabor,
+    );
+    if (block) blocks.push(block);
+  }
+
+  return blocks.join("\n");
+}
+
+// ============================================================
 // Main handler
 // ============================================================
 
@@ -202,71 +606,94 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed. Use POST." }),
-        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Method not allowed. Use POST." }, 405);
     }
 
-    // --- Auth ---
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const auth = await authenticate(req, FUNCTION_NAME);
+    if (!auth.ok) return auth.response;
+    const { userId, ip, authClient, adminClient } = auth;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } },
+    // Global circuit breaker for AI cost.
+    const ceilingResp = await checkGlobalAiCeiling(
+      adminClient,
+      GLOBAL_AI_CEILING_24H,
+      FUNCTION_NAME,
     );
+    if (ceilingResp) return ceilingResp;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    // Per-IP rate limit.
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
+    );
+    if (ipResp) return ipResp;
 
     // --- Parse body ---
-    const { text, image, company_id, trade } = await req.json() as {
+    const { text, image, company_id, trade, job_size, job_size_unit, request_id } = await req.json() as {
       text?: string;
       image?: string;
       company_id: string;
       trade: "bygg" | "el" | "vvs" | "general";
+      job_size?: number | null;
+      job_size_unit?: "kvm" | "m" | "m3" | null;
+      request_id?: string;
     };
 
     if (!company_id || !trade) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields: company_id, trade" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Missing required fields: company_id, trade" }, 400);
     }
 
     if (!text && !image) {
-      return new Response(
-        JSON.stringify({ error: "Provide either text or image" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Provide either text or image" }, 400);
     }
 
-    // --- Rate limit ---
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
+    // --- Idempotency: hash the inputs so retries only return the cached
+    //     response if the payload actually matches. ---
+    const inputHash = await sha256Hex(
+      JSON.stringify({
+        text: text ?? null,
+        image: image ?? null,
+        company_id,
+        trade,
+        job_size: job_size ?? null,
+        job_size_unit: job_size_unit ?? null,
+      }),
+    );
 
-    const { count } = await supabase
-      .from("ai_usage")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .gte("used_at", dayStart.toISOString());
+    if (request_id) {
+      const cutoff = new Date(Date.now() - 60_000).toISOString();
+      const { data: cached } = await adminClient
+        .from("ai_idempotency_cache")
+        .select("response, input_hash, created_at")
+        .eq("user_id", userId)
+        .eq("request_id", request_id)
+        .gte("created_at", cutoff)
+        .maybeSingle();
+      if (cached && (cached as any).input_hash === inputHash) {
+        return new Response(
+          JSON.stringify((cached as any).response),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
-    if ((count ?? 0) >= DAILY_LIMIT) {
-      return new Response(
-        JSON.stringify({ error: "Daglig gräns nådd (20 genereringar per dag)" }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    // Per-user daily limit — atomic claim via advisory-lock RPC so
+    // concurrent requests can't exceed DAILY_LIMIT.
+    const { data: claimOk, error: claimErr } = await adminClient.rpc("claim_ai_usage_slot", {
+      p_user_id: userId,
+      p_daily_limit: DAILY_LIMIT,
+    });
+    if (claimErr) {
+      console.error("[generate-quote] claim_ai_usage_slot error:", claimErr);
+      return jsonResponse({ error: "Internt serverfel, försök igen" }, 500);
+    }
+    if (claimOk === false) {
+      return jsonResponse(
+        { error: "Daglig gräns nådd (20 genereringar per dag)" },
+        429,
       );
     }
 
@@ -289,27 +716,28 @@ Deno.serve(async (req: Request) => {
       companyMaterialsResult,
       learningsResult,
       keywordDenominatorResult,
+      clusterMembersResult,
     ] = await Promise.all([
       // Layer 1: User trade profile
-      supabase
+      authClient
         .from("user_trade_profiles")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("trade", trade)
         .maybeSingle(),
 
       // Layer 2: Matching job patterns
       inputKeywords.length > 0
-        ? supabase
+        ? authClient
             .from("user_job_patterns")
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", userId)
             .eq("trade", trade)
             .overlaps("pattern_keywords", inputKeywords)
         : Promise.resolve({ data: [] }),
 
       // Global trade materials
-      supabase
+      authClient
         .from("trade_materials")
         .select("name, unit, unit_price, purchase_price, markup_percent")
         .eq("category", trade)
@@ -317,7 +745,7 @@ Deno.serve(async (req: Request) => {
         .order("name"),
 
       // User's own company materials
-      supabase
+      authClient
         .from("materials")
         .select("name, unit, unit_price, purchase_price, markup_percent")
         .eq("company_id", company_id)
@@ -325,15 +753,15 @@ Deno.serve(async (req: Request) => {
         .order("name"),
 
       // Layer 4: All correction learnings for this trade (additions + removals)
-      supabase
+      authClient
         .from("user_material_learnings")
         .select("material_name, job_keywords, learning_type")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("trade", trade),
 
       // Layer 4: Keyword denominator (quotes with overlapping keywords)
       inputKeywords.length > 0
-        ? supabase
+        ? authClient
             .from("quotes")
             .select("*", { count: "exact", head: true })
             .eq("company_id", company_id)
@@ -341,6 +769,20 @@ Deno.serve(async (req: Request) => {
             .in("status", ["sent", "accepted", "completed"])
             .overlaps("keywords", inputKeywords)
         : Promise.resolve({ count: 0 }),
+
+      // Layer 5 + sub-aggregates: raw cluster-member rows (quote_items +
+      // materials + ai_suggestions). Scoped later per selected pattern.
+      inputKeywords.length > 0
+        ? authClient
+            .from("quotes")
+            .select(
+              "id, keywords, job_size, job_size_unit, ai_suggestions, quote_items(description, unit_price, quote_item_materials(name, quantity, unit, unit_price))"
+            )
+            .eq("company_id", company_id)
+            .eq("trade", trade)
+            .in("status", ["sent", "accepted", "completed"])
+            .overlaps("keywords", inputKeywords)
+        : Promise.resolve({ data: [] }),
     ]);
 
     const tradeProfile = tradeProfileResult.data;
@@ -350,29 +792,32 @@ Deno.serve(async (req: Request) => {
     const allLearnings = learningsResult.data ?? [];
     const keywordDenominator = (keywordDenominatorResult as any).count ?? 0;
     const tradeDenominator = tradeProfile?.total_quotes ?? 0;
+    const clusterMembers = (clusterMembersResult as any).data ?? [];
 
-    // --- Step 3: Find best Layer 2 pattern match ---
-    // Patterns are now keyword-clustered (minimum 2 quotes per pattern).
-    // Match by keyword overlap count, with tiered confidence thresholds.
-    let bestPattern: any = null;
+    // --- Step 3: Find top-2 Layer 2 pattern matches (weighted scoring) ---
+    // Score = sum of shared token weights (phrase=2, noun=1).
+    // Each pattern passes the tier gate independently:
+    //   Strong:   score ≥ 4 AND ≥1 phrase token matched, OR score ≥ 5 (nouns only).
+    //   Moderate: score ≥ 3.
+    //   Skip:     below 3.
+    const selectedPatterns: any[] = [];
     if (jobPatterns.length > 0 && inputKeywords.length > 0) {
-      // Rank by keyword overlap count
-      bestPattern = jobPatterns
+      const inputSet = new Set(inputKeywords);
+      const scored = jobPatterns
         .map((p: any) => {
-          const overlap = (p.pattern_keywords ?? []).filter((kw: string) =>
-            inputKeywords.includes(kw)
-          ).length;
-          return { ...p, _overlap: overlap };
+          const patternKw: string[] = p.pattern_keywords ?? [];
+          const score = scoreSharedKeywords(patternKw, inputKeywords);
+          const hasPhraseMatch = patternKw.some(
+            (t) => t.includes("_") && inputSet.has(t),
+          );
+          return { ...p, _score: score, _hasPhrase: hasPhraseMatch };
         })
-        .sort((a: any, b: any) => b._overlap - a._overlap)[0];
+        .sort((a: any, b: any) => b._score - a._score);
 
-      // Minimum thresholds for injection:
-      // Strong: 3+ keyword overlap OR 2+ overlap with 4+ occurrences
-      // Moderate: 2+ keyword overlap with 2+ occurrences
-      if (bestPattern) {
-        const isStrong = bestPattern._overlap >= 3 || (bestPattern._overlap >= 2 && bestPattern.occurrence_count >= 4);
-        const isModerate = bestPattern._overlap >= 2 && bestPattern.occurrence_count >= 2;
-        if (!isStrong && !isModerate) bestPattern = null;
+      for (const p of scored.slice(0, 2)) {
+        const isStrong = (p._score >= 4 && p._hasPhrase) || p._score >= 5;
+        const isModerate = p._score >= 3;
+        if (isStrong || isModerate) selectedPatterns.push(p);
       }
     }
 
@@ -424,7 +869,24 @@ Deno.serve(async (req: Request) => {
     const tradeLabel = TRADE_LABELS[trade] ?? trade;
 
     const layer1Section = buildLayer1Section(tradeProfile);
-    const layer2Section = buildLayer2Section(bestPattern);
+
+    // Layer 5 + sub-aggregates: per-pattern scoped member sets, built once.
+    const perPatternMembers = selectedPatterns.map((p) =>
+      scopeMembersToPattern(clusterMembers, p),
+    );
+    const layer5Blocks = selectedPatterns.map((p, i) =>
+      buildLayer5Section(p, perPatternMembers[i], { job_size, job_size_unit }),
+    );
+    const subAggBlocks = selectedPatterns.map((p, i) =>
+      buildSubAggregateSections(p, perPatternMembers[i], inputKeywords),
+    );
+    const shouldReframeLayer2 = layer5Blocks.some((s) => s !== "");
+
+    const layer2Section = buildLayer2Section(selectedPatterns, {
+      includeUnscaledLabel: shouldReframeLayer2,
+    });
+    const layer5Joined = layer5Blocks.filter(Boolean).join("\n");
+    const subAggJoined = subAggBlocks.filter(Boolean).join("\n");
     const layer4Section = buildLayer4Section(
       aggregatedAdditions,
       aggregatedRemovals,
@@ -432,13 +894,18 @@ Deno.serve(async (req: Request) => {
       keywordDenominator,
     );
 
+    const jobSizeLine =
+      typeof job_size === "number" && job_size > 0 && job_size_unit
+        ? `OMFATTNING: ${job_size} ${job_size_unit}\n\n`
+        : "";
+
     const promptText = `Du är en offertassistent för en svensk ${tradeLabel}-hantverkare.
 Svara ALLTID på svenska. Alla priser i SEK.
 
-${layer1Section}${layer2Section}${layer4Section}TILLGÄNGLIGA MATERIAL (prioritera dessa för prissättning):
+${layer1Section}${layer2Section}${layer5Joined}${subAggJoined}${layer4Section}TILLGÄNGLIGA MATERIAL (prioritera dessa för prissättning):
 ${materialsList}
 
-KUNDENS FÖRFRÅGAN:
+${jobSizeLine}KUNDENS FÖRFRÅGAN:
 ${text ?? "[Se bifogad bild]"}
 
 INSTRUKTIONER:
@@ -449,7 +916,7 @@ INSTRUKTIONER:
 - customer_address: extrahera från förfrågan om tydligt angivet, annars null
 - notes: en kort sammanfattning av jobbet på svenska
 - include_vat: sätt till true som standard
-- keywords: extrahera jobbspecifika nyckelord i grundform — endast substantiv som beskriver specifika material, komponenter eller installationer. Uteslut verb och vaga ord. Returnera [] om inga relevanta nyckelord finns.
+- keywords: extrahera jobbspecifika nyckelord. ABSOLUT REGEL: skapa en verb+substantiv-fras (verb_substantiv med understreck, verbet i infinitiv, substantivet i singular obestämd) ENDAST om verbet står ordagrant som ett ord i texten. Gissa aldrig ett verb. Exempel: "byta element i köket" → ["byta_element","element","kök"] (byta finns). "Badrumsrenovering med nytt kakel" → ["renovering","badrum","kakel"] (inga verb i texten — inga fraser, inte ens lägga_kakel). När en fras emitteras, inkludera också substantivet separat. Substantiv utan verb (platser, jobbtyper som "renovering") inkluderas ensamma. Dela svenska sammansättningar (badrumsrenovering → renovering + badrum). Singular obestämd. Uteslut vaga ord. Returnera [] om inga relevanta nyckelord finns.
 - Använd material från listan ovan när möjligt. Om ett material saknas, lägg till det med rimliga svenska marknadspriser.
 
 Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
@@ -539,7 +1006,14 @@ Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
     const allKeywords = [...new Set([...inputKeywords, ...parsed.keywords])];
     parsed.keywords = allKeywords;
 
-    await supabase.from("ai_usage").insert({ user_id: user.id });
+    if (request_id) {
+      await adminClient.from("ai_idempotency_cache").insert({
+        user_id: userId,
+        request_id,
+        input_hash: inputHash,
+        response: parsed,
+      });
+    }
 
     return new Response(
       JSON.stringify(parsed),

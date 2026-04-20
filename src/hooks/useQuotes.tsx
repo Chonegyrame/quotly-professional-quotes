@@ -35,6 +35,8 @@ export function useQuotes() {
       trade?: string;
       keywords?: string[];
       ai_suggestions?: any;
+      job_size?: number | null;
+      job_size_unit?: 'kvm' | 'm' | 'm3' | null;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Get next quote number
@@ -59,6 +61,8 @@ export function useQuotes() {
           trade: input.trade || 'general',
           keywords: input.keywords ?? [],
           ai_suggestions: input.ai_suggestions ?? null,
+          job_size: input.job_size ?? null,
+          job_size_unit: input.job_size_unit ?? null,
           sent_at: input.status === 'sent' ? new Date().toISOString() : null,
         })
         .select()
@@ -129,7 +133,7 @@ export function useQuotes() {
               trade: quote.trade,
             },
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          }).catch(() => { /* silent — learning is non-critical */ });
+          }).catch((err) => console.error("[recompute-user-profile] failed:", err));
         }
       }
     },
@@ -150,6 +154,8 @@ export function useQuotes() {
       status?: string;
       trade?: string;
       keywords?: string[];
+      job_size?: number | null;
+      job_size_unit?: 'kvm' | 'm' | 'm3' | null;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Determine the right status after edit
@@ -185,6 +191,8 @@ export function useQuotes() {
         valid_until: input.valid_until,
         status: finalStatus,
         trade: input.trade || 'general',
+        job_size: input.job_size ?? null,
+        job_size_unit: input.job_size_unit ?? null,
       };
       if (finalStatus === 'sent') updates.sent_at = new Date().toISOString();
 
@@ -254,6 +262,8 @@ export function useQuotes() {
           notes: sourceQuote.notes || '',
           estimated_days: (sourceQuote as any).estimated_days ?? null,
           estimated_hours: (sourceQuote as any).estimated_hours ?? null,
+          job_size: (sourceQuote as any).job_size ?? null,
+          job_size_unit: (sourceQuote as any).job_size_unit ?? null,
           valid_until: validUntil,
           status: 'draft',
           sent_at: null,
