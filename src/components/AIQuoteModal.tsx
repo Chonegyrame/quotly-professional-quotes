@@ -1,14 +1,18 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Upload, X, FileText, MessageSquare } from 'lucide-react';
+import { Loader2, Upload, X, FileText, MessageSquare, Ruler, ChevronDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompany } from '@/hooks/useCompany';
 
 type Trade = 'bygg' | 'el' | 'vvs' | 'general';
+type SizeUnit = 'kvm' | 'm' | 'm3';
 
 const TRADES: { value: Trade; label: string }[] = [
   { value: 'bygg', label: 'Bygg' },
@@ -16,6 +20,25 @@ const TRADES: { value: Trade; label: string }[] = [
   { value: 'vvs', label: 'VVS' },
   { value: 'general', label: 'Allmänt' },
 ];
+
+const SIZE_UNIT_LABEL: Record<SizeUnit, string> = {
+  kvm: 'm²',
+  m: 'm',
+  m3: 'm³',
+};
+
+// Matches a number (with optional decimal) followed by a size unit in common
+// Swedish/metric variants. Normalised to our three canonical units via
+// normaliseSizeUnit() below. Word boundary + leading digit keeps false
+// positives down when "m" appears in unrelated prose.
+const SIZE_REGEX = /(\d+(?:[.,]\d+)?)\s*(kvm|m²|m2|m³|m3|m)\b/i;
+
+function normaliseSizeUnit(raw: string): SizeUnit {
+  const lower = raw.toLowerCase();
+  if (lower === 'kvm' || lower === 'm²' || lower === 'm2') return 'kvm';
+  if (lower === 'm³' || lower === 'm3') return 'm3';
+  return 'm';
+}
 
 interface AIQuoteModalProps {
   open: boolean;
@@ -58,6 +81,9 @@ export function AIQuoteModal({ open, onClose }: AIQuoteModalProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [trade, setTrade] = useState<Trade>('bygg');
   const [generating, setGenerating] = useState(false);
+  const [jobSize, setJobSize] = useState('');
+  const [jobSizeUnit, setJobSizeUnit] = useState<SizeUnit | ''>('');
+  const [sizeOpen, setSizeOpen] = useState(false);
 
   const resetState = () => {
     setText('');
@@ -66,6 +92,30 @@ export function AIQuoteModal({ open, onClose }: AIQuoteModalProps) {
     setTrade('bygg');
     setTab('text');
     setGenerating(false);
+    setJobSize('');
+    setJobSizeUnit('');
+    setSizeOpen(false);
+  };
+
+  // Regex match from the prose textarea. Only suggested when both collapsible
+  // fields are still empty — once the user has entered anything, the badge
+  // stays out of the way.
+  const sizeSuggestion = useMemo(() => {
+    if (tab !== 'text') return null;
+    if (jobSize !== '' || jobSizeUnit !== '') return null;
+    const match = text.match(SIZE_REGEX);
+    if (!match) return null;
+    const value = match[1].replace(',', '.');
+    const unit = normaliseSizeUnit(match[2]);
+    const label = `${match[1]} ${SIZE_UNIT_LABEL[unit]}`;
+    return { value, unit, label };
+  }, [tab, text, jobSize, jobSizeUnit]);
+
+  const applySizeSuggestion = () => {
+    if (!sizeSuggestion) return;
+    setJobSize(sizeSuggestion.value);
+    setJobSizeUnit(sizeSuggestion.unit);
+    setSizeOpen(true);
   };
 
   const handleClose = () => {
@@ -114,12 +164,18 @@ export function AIQuoteModal({ open, onClose }: AIQuoteModalProps) {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
 
+      const parsedJobSize = jobSize === '' ? null : Number(jobSize.replace(',', '.'));
+      const hasValidSize =
+        parsedJobSize !== null && Number.isFinite(parsedJobSize) && parsedJobSize > 0 && jobSizeUnit !== '';
+
       const { data, error } = await supabase.functions.invoke('generate-quote', {
         body: {
           text: tab === 'text' ? text.trim() : undefined,
           image: base64Image,
           company_id: company.id,
           trade,
+          job_size: hasValidSize ? parsedJobSize : undefined,
+          job_size_unit: hasValidSize ? jobSizeUnit : undefined,
         },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
@@ -139,9 +195,18 @@ export function AIQuoteModal({ open, onClose }: AIQuoteModalProps) {
       }
 
       toast.success('Offert genererad!');
+      const handoffJobSize = hasValidSize ? parsedJobSize : null;
+      const handoffJobSizeUnit = hasValidSize ? jobSizeUnit : null;
       resetState();
       onClose();
-      navigate('/quotes/new', { state: { aiData: data, trade } });
+      navigate('/quotes/new', {
+        state: {
+          aiData: data,
+          trade,
+          jobSize: handoffJobSize,
+          jobSizeUnit: handoffJobSizeUnit,
+        },
+      });
     } catch (err: any) {
       toast.error(err.message || 'Något gick fel, försök igen');
     } finally {
@@ -244,6 +309,81 @@ export function AIQuoteModal({ open, onClose }: AIQuoteModalProps) {
               )}
             </div>
           )}
+
+          {/* Job size (optional) */}
+          <div className="space-y-2">
+            {sizeSuggestion && (
+              <button
+                type="button"
+                onClick={applySizeSuggestion}
+                className="flex w-full items-center justify-between rounded-md border border-accent bg-accent px-3 py-2 text-left text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+              >
+                <span>
+                  Hittade <span className="font-semibold">‘{sizeSuggestion.label}’</span> — lägg till som mått?
+                </span>
+                <span className="text-[0.7rem] font-semibold uppercase tracking-wide">Fyll i</span>
+              </button>
+            )}
+
+            <Collapsible open={sizeOpen} onOpenChange={setSizeOpen}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <span className="flex items-center gap-2">
+                    <Ruler className="h-4 w-4" />
+                    Lägg till mått (valfritt)
+                    {!sizeOpen && jobSize !== '' && jobSizeUnit !== '' && (
+                      <span className="text-foreground">
+                        · {jobSize} {SIZE_UNIT_LABEL[jobSizeUnit]}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${sizeOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label htmlFor="job-size" className="sr-only">Storlek</Label>
+                    <Input
+                      id="job-size"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={10000}
+                      step="0.1"
+                      placeholder="t.ex. 25"
+                      value={jobSize}
+                      onChange={(e) => setJobSize(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-28">
+                    <Label className="sr-only">Enhet</Label>
+                    <Select
+                      value={jobSizeUnit === '' ? undefined : jobSizeUnit}
+                      onValueChange={(v) => setJobSizeUnit(v as SizeUnit)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Enhet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kvm">m² (kvm)</SelectItem>
+                        <SelectItem value="m">m (meter)</SelectItem>
+                        <SelectItem value="m3">m³ (kubik)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Skickas till AI:n som anker för materialmängder. Lämna tomt om jobbet inte mäts på det här sättet.
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
 
           {/* Trade selector */}
           <div>

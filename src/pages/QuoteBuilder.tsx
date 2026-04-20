@@ -62,6 +62,8 @@ export default function QuoteBuilder() {
   const [estimatedDays, setEstimatedDays] = useState<number | ''>('');
   const [estimatedHours, setEstimatedHours] = useState<number | ''>('');
   const [validityDays, setValidityDays] = useState(defaultValidity);
+  const [jobSize, setJobSize] = useState<number | null>(null);
+  const [jobSizeUnit, setJobSizeUnit] = useState<'kvm' | 'm' | 'm3' | null>(null);
 
   useEffect(() => {
     if (isEditMode && existingQuote && !initialized) {
@@ -72,6 +74,8 @@ export default function QuoteBuilder() {
       setNotes(existingQuote.notes || '');
       setEstimatedDays((existingQuote as any).estimated_days ?? '');
       setEstimatedHours((existingQuote as any).estimated_hours ?? '');
+      setJobSize((existingQuote as any).job_size ?? null);
+      setJobSizeUnit((existingQuote as any).job_size_unit ?? null);
       if ((existingQuote as any).trade) setTrade((existingQuote as any).trade);
 
       if (existingQuote.valid_until) {
@@ -111,6 +115,12 @@ export default function QuoteBuilder() {
     if (!isEditMode && aiData && !initialized) {
       if (location.state?.trade) setTrade(location.state.trade);
       if (Array.isArray(aiData.keywords) && aiData.keywords.length > 0) setAiKeywords(aiData.keywords);
+      const incomingSize = location.state?.jobSize;
+      const incomingUnit = location.state?.jobSizeUnit;
+      if (typeof incomingSize === 'number' && incomingSize > 0 && incomingUnit) {
+        setJobSize(incomingSize);
+        setJobSizeUnit(incomingUnit);
+      }
       // Store the raw AI response for later diffing
       setAiSuggestions(aiData);
       setCustomerName(aiData.customer_name || '');
@@ -214,6 +224,8 @@ export default function QuoteBuilder() {
           _laborPrice: i.laborPrice,
         }));
 
+      const hasSize = jobSize !== null && jobSize > 0 && jobSizeUnit !== null;
+
       const payload = {
         customer_name: customerName,
         customer_email: customerEmail,
@@ -227,6 +239,8 @@ export default function QuoteBuilder() {
         trade: trade || 'general',
         keywords: aiKeywords.length > 0 ? aiKeywords : undefined,
         ai_suggestions: aiSuggestions || undefined,
+        job_size: hasSize ? jobSize : null,
+        job_size_unit: hasSize ? jobSizeUnit : null,
         items: quoteItems.map((qi) => ({
           description: qi.description,
           quantity: qi.quantity,
