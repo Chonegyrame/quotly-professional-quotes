@@ -1,80 +1,57 @@
 # Session State
 
-Last updated: 2026-04-22
-Branch: main
+Last updated: 2026-04-22 (later in the day)
+Branch: main — clean, everything committed + pushed
 
-**⚡ NEXT ACTION when opening a fresh session:** Chunk B of the firm-model migration — rewrite the learning system to be firm-scoped. Full spec in [docs/firm-model-migration.md](docs/firm-model-migration.md) §6. Chunk A shipped + verified this session.
+**⚡ NEXT ACTION when opening a fresh session:** No blocking work. Pick from the backlog under "What comes next" below. The firm-model migration is done (both chunks verified). AI prompt visibility was just added for dev observability.
 
-## What was done this session
+## What was done this session (the "later" day 2026-04-22 session)
 
-- **Chunk A of firm-model migration — shipped + verified.**
-  - 4 migrations applied to prod: `company_memberships` + `company_invites` + helpers + backfill (`20260422140000`), RLS rewrite on 7 tables (`20260422150000`), policy TO-authenticated tighten (`20260422160000`), `get_company_members` RPC (`20260422170000`).
-  - 2 new edge functions deployed: `send-team-invite`, `accept-team-invite`. Both use `verify_jwt=false` + `authenticate()` helper per project JWT pattern.
-  - Frontend: `useCompany` rewritten to query via `company_memberships` join (now returns `role`). New hooks `useCompanyMembers`, `useCompanyInvites`, `useCurrentRole`. New `src/lib/permissions.ts` with 7-permission helper. New `TeamSection` component on Settings page. New `/invite/:token` page + route + post-signup sessionStorage redirect.
-  - DB types regenerated to include new tables + RPCs.
-  - Trigger `on_company_created` auto-creates the owner membership row when a new company is inserted — keeps signup flow working unchanged.
-  - Pre-existing policies on `quote_events` / `quote_item_materials` / `quote_items` / `quotes` for `anon` (public customer view at `/q/:id`) were explicitly preserved; only authenticated-role policies got rewritten.
-- **Verified end-to-end:** Invited `gwallin.photo@gmail.com` from Brunn boofing owner. Used the raw invite token + `/invite/<token>` URL (email send blocked by Resend sandbox — see gotcha below). Signed up as that email, auto-redirected through `/auth` → `/invite/:token` → accepted. New user (`a29ceea2-c17a-402a-a323-69db57366d57`) is now `member` of Brunn boofing. Zero RLS errors in Postgres logs during the test.
-- **Flagged pre-existing `/q/:id` accept/decline bug as a separate task** via spawn_task. Customer-facing accept/decline silently fails for anon users because RLS blocks the writes; UI shows fake success. Not caused by this migration — pre-existed. Fix will route accept/decline through a new public edge function `respond-to-quote`.
-- **One small UX fix during verification:** `TeamSection.handleSendInvite` now unpacks `FunctionsHttpError.context` to surface the actual Swedish error message instead of the generic "Edge Function returned a non-2xx status code".
+- **Chunk B of firm-model migration shipped + verified** (commit `6b39f89`). Dropped three user-scoped learning tables (all sparse: 3 rows + 0 + 0), recreated as `company_*` versions keyed by `company_id`. New `replace_company_job_patterns` RPC. Updated `recompute-user-profile` (v10) and `generate-quote` edge fns to read/write firm-scoped. Added `company_id` column to `recompute_metrics`. Learning tables repopulate naturally on quote send — verified owner's 10 sent `general` quotes aggregated correctly into `company_trade_profiles` after one test send.
+- **AI prompt visibility for dev** shipped (commit `eeb48b3`). New `ai_prompt_text` column on `quotes`. `generate-quote` now returns the full assembled prompt alongside its parsed response. QuoteBuilder persists it on the quote row. QuoteDetail renders a collapsible "AI-prompt (dev)" card visible only on AI-generated quotes. Purpose: observe how the same input prompt produces different Layer 1/2/4 context as the learning pool grows. Removable pre-launch by deleting ~16 lines from QuoteDetail.tsx (data stays) or dropping the column (full removal).
+- **Big conceptual discussion** (no code, but saved thinking for later): scoping of learning, what Layer 4 actually tracks (material names, NOT quantities — quantities come from Claude parsing customer input + Layer 5 size scaling + Layer 1/2 as background), what makes a useful AI quality signal (edit magnitude already tracked via `ai_materials_added`/`removed` columns, NOT save rate which is near-meaningless), future architectural consideration for wholesale catalog retrieval layer.
 
 ## Current state
 
-- **Firm model Chunk A is live in prod.** Multi-user-per-firm works. `gustav.wallin123@gmail.com` owns Brunn boofing + the new `gwallin.photo@gmail.com` is a member of Brunn boofing. `Wallin taklägg` still single-user (owner only).
-- **Chunk B is NOT started.** The learning tables (`user_trade_profiles`, `user_job_patterns`, `user_material_learnings`) are still keyed by `user_id`. `recompute-user-profile` edge function still at v9 from last session — needs rewrite for firm-scoping.
-- **Fortnox** still deferred until Chunk B ships (see §2 of migration doc).
-- **`companies.user_id` column** retained as historical "original creator" marker. RLS no longer reads it for auth — only the trigger on insert does.
+- **Firm model is live + complete.** Both firms (Brunn boofing + Wallin taklägg) run on the new schema. One member invited/accepted via the Chunk A flow (`gwallin.photo@gmail.com` is a member of Brunn boofing). Learning system is firm-pooled.
+- **Learning data:** `company_trade_profiles` has 1 row (Brunn boofing × general, 10 quotes). Other combos (Brunn × bygg, Brunn × el, Wallin × general) will populate on next send in each. This is expected — plan §6.5 explicitly says rebuild on first quote activity.
+- **AI prompt visibility live.** Generate a new AI quote and you'll see the "AI-prompt (dev)" card on the quote detail page.
+- **Git:** main is at `eeb48b3`, clean, pushed. No uncommitted changes.
+- **Carry-over dirty files:** none this session.
 
 ## Uncommitted changes
 
-Modified (from this session):
-- `src/App.tsx` — added `/invite/:token` route, added `/invite/` to `isPublicRoute` check
-- `src/hooks/useCompany.tsx` — rewrote to query via `company_memberships`, returns `role` now
-- `src/integrations/supabase/types.ts` — regenerated after migrations
-- `src/pages/Auth.tsx` — post-login redirect checks sessionStorage for pending invite
-- `src/pages/Settings.tsx` — imports + renders `<TeamSection />` at the bottom
-- `supabase/config.toml` — registered `send-team-invite` + `accept-team-invite` with `verify_jwt=false`
+None. Fully synced with origin/main.
 
-Untracked (from this session):
-- `src/components/TeamSection.tsx` — members list + invite form + pending invites UI
-- `src/hooks/useCompanyInvites.tsx`, `src/hooks/useCompanyMembers.tsx`, `src/hooks/useCurrentRole.tsx`
-- `src/lib/permissions.ts`
-- `src/pages/AcceptInvite.tsx`
-- `supabase/functions/send-team-invite/index.ts`
-- `supabase/functions/accept-team-invite/index.ts`
-- `supabase/migrations/20260422140000_firm_model_foundation.sql`
-- `supabase/migrations/20260422150000_firm_model_rls_rewrite.sql`
-- `supabase/migrations/20260422160000_firm_model_tighten_new_table_policies.sql`
-- `supabase/migrations/20260422170000_get_company_members_rpc.sql`
+## What comes next — backlog, pick whatever
 
-Also carry-over dirty from prior sessions: `index.html`, `tailwind.config.ts`, `src/components/FlipDeck/`, `src/components/LearningSlot.tsx`, `src/components/LearningSlot.backup.tsx`, `src/pages/LandingPage.tsx` from last session, plus session's own changes to `supabase/functions/recompute-user-profile/index.ts`.
-
-No commits this session.
-
-## What comes next
-
-1. **PRIMARY — Chunk B of firm-model migration.** Full spec in [docs/firm-model-migration.md](docs/firm-model-migration.md) §6. Drop the three `user_*` learning tables, recreate as `company_*` scoped, replace `replace_user_job_patterns` RPC with `replace_company_job_patterns`, rewrite `recompute-user-profile` + `generate-quote` edge functions to read/write by `company_id`, trigger one recompute per firm to rebuild learning. §10 has the checkpoint tests. Main assistant (not /buildreal) per §13 recommendation — surface area is smaller than Chunk A.
-2. **Then resolve the spawned task** for the pre-existing `/q/:id` accept/decline bug. Already has a full brief.
-3. **Then Fortnox integration (Chunk C)** when partner approval comes through.
-4. **Smaller backlog:**
-   - Deferred UI: change-role dropdown + transfer-ownership flow in Team section (skipped for v1 — add when you actually have a firm managing itself).
-   - Deferred: post-signup email→invite auto-match (plan §7.4 last bullet). Would need a lookup edge function since fresh users can't read invites. Low priority — primary flow (click email link) works fine.
-   - Cleanup: commit this session's work + last session's LearningSlot carryover.
-   - Cleanup: verify a domain in Resend before sending real customer quote emails. Current setup only works for `gustav.wallin123@gmail.com` via sandbox sender.
+1. **Pre-existing `/q/:id` accept/decline bug.** Spawned as a separate task during Chunk A session. Customer-facing accept/decline silently fails for anon users (RLS blocks anon writes, UI shows fake success). Fix routes accept/decline through a new `respond-to-quote` edge function. Full brief in the spawned task.
+2. **Wholesale material catalog retrieval (architectural prep).** Discussed this session. If/when importing thousands of materials from wholesalers (Beijer, Ahlsell, etc.) becomes a plan, we'd need to add a retrieval layer (keyword filter or vector RAG) *before* materials hit the prompt. Not urgent. Revisit when real wholesaler import is on the table.
+3. **Firm material trade-tagging.** Minor refinement: firm `materials` are currently untagged by trade, so ALL firm materials appear in every generate-quote prompt regardless of selected trade. Fine for now (both test firms have <20 materials). Worth addressing when a firm crosses ~100 materials.
+4. **Customer's original request visible on the quote (non-dev).** Earlier in this session the user raised this idea — showing what the customer typed ("bygga ett staket 5 m och måla sovrummet") on the generated quote for context. The raw input is technically inside the `ai_prompt_text` now, but buried in thousands of chars. If the user wants a clean surface-level display of just the original input, we'd need a separate `ai_input_text` column and a small QuoteDetail section. Not built yet — deferred.
+5. **Layer 4 recency filter** (still parked). Revisit when `company_material_learnings` crosses ~2000 rows or AI starts showing "stale" preferences from long-past jobs.
+6. **Fortnox integration (Chunk C)** — still waiting on partner approval.
+7. **Pre-launch cleanup items:** verify a Resend domain (still using sandbox sender, blocking real customer email delivery), remove or gate the `ai_prompt_text` dev panel.
 
 ## Open questions
 
-- Whether to eventually drop `companies.user_id` column once we're confident nothing reads it for auth. Low priority — audit the codebase first.
-- Whether invite emails should use a different `from` address than `send-quote-email` (currently both use `onboarding@resend.dev` sandbox). Moot until you verify a domain.
+- Whether to eventually drop `companies.user_id` column once confident nothing reads it for auth (low priority — audit codebase first).
+- Whether invite emails should use a different sender than `send-quote-email` (both still `onboarding@resend.dev`). Moot until a Resend domain is verified.
 
 ## Context that is easy to forget
 
-- **Resend sandbox limitation.** `onboarding@resend.dev` only delivers to the Resend account owner's email (`gustav.wallin123@gmail.com`). Any other recipient gets silently dropped. This applies to `send-team-invite` AND the existing `send-quote-email`. For testing invites to other emails, grab the token from `company_invites` and go directly to `/invite/<token>`.
-- **supabase-js non-2xx behavior.** `supabase.functions.invoke` throws `FunctionsHttpError` on 4xx/5xx. The JSON body is on `err.context.response` — read it with `.json()` to surface the real error. `TeamSection.handleSendInvite` has the pattern.
-- **The `on_company_created` trigger** is load-bearing for signup — it auto-creates the owner membership when a new company is inserted. If you ever drop it, new signups will end up with a company but no membership, and `useCompany` will return null.
+- **`ai_prompt_text` is dev-only.** Renders on QuoteDetail for any AI-generated quote. Remove before launching to real users — they don't want to see internal prompt engineering. One-line removal in [QuoteDetail.tsx](src/pages/QuoteDetail.tsx).
+- **The `on_company_created` trigger** is load-bearing for signup — auto-creates owner membership when a new company is inserted. Don't drop it without replacing the mechanism.
 - **Role-based RLS pattern:** `is_company_member(company_id)` for SELECT/INSERT/UPDATE access, `company_role(company_id) IN ('owner', 'admin')` for DELETE and company settings. Members can do everything except delete quotes/materials/templates or edit company settings.
-- **Plans for Chunk B rely on the two test firms being sparse** (few quotes). Because of that, the plan drops + recreates the learning tables rather than doing a column rename + backfill. If you add 100+ quotes before running Chunk B, reconsider the approach.
-- **Scroll-driven hero animations** still can't be verified in Claude Preview harness — verify visually in Chrome (carry-over).
-- **Pre-existing TS error at LandingPage.tsx:835** unrelated (carry-over).
-- **Two companies exist in DB:** Brunn boofing (owner + 1 member as of this session) and Wallin taklägg (owner only).
+- **Layer 4 does not track quantities.** Only which materials the user adds/removes per keyword context. Quantities come from (1) Claude parsing explicit customer input, (2) Layer 5 size scaling (kvm/m/m3 jobs), (3) Layer 1/2 `avg_quantity` as background context. Customer's explicit request should win; Claude is usually reliable for clear counts.
+- **Save rate is a vanity metric for AI quality.** Users save almost everything because the UX funnels to save. Real signal is edit magnitude: `ai_materials_added` / `ai_materials_removed` on quotes. Near-zero edits = AI nailed it; many edits = AI was wrong.
+- **Resend sandbox limitation** persists. `onboarding@resend.dev` only delivers to `gustav.wallin123@gmail.com` (the Resend account owner). Applies to `send-quote-email` AND `send-team-invite`. See `project_resend_sandbox.md` memory entry.
+- **Edge function deploys:** use `./supabase.exe functions deploy <name> --project-ref cimixmdgcyozwmzboxfk` via CLI. MCP's `deploy_edge_function` works but requires JSON-escaping large files by hand, which is error-prone for files >500 lines.
+- **generate-quote is 1030 lines.** Considered fat but not urgent to refactor. When next touching it for a substantive change, consider splitting into `_shared/` modules (prompt-layers.ts, layer5.ts, sub-aggregates.ts).
+- **Two test accounts + membership state:**
+  - Brunn boofing (company_id `6b84d6a5…`): owner `gustav.wallin123@gmail.com`, member `gwallin.photo@gmail.com`
+  - Wallin taklägg (company_id `0b663e76…`): owner only (different user)
+- **Two companies, four trade combos with sent quotes:** Brunn×bygg (5), Brunn×el (2), Brunn×general (10), Wallin×general (25). Only Brunn×general has populated learning tables so far.
+- **Pre-existing TS error at LandingPage.tsx:835** (framer-motion Variants typing) — unrelated carry-over.
+- **Scroll-driven hero animations** still can't be verified in Claude Preview harness — test visually in Chrome.
 - capybara
