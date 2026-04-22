@@ -718,20 +718,20 @@ Deno.serve(async (req: Request) => {
       keywordDenominatorResult,
       clusterMembersResult,
     ] = await Promise.all([
-      // Layer 1: User trade profile
+      // Layer 1: Firm trade profile (Chunk B — pooled across all members)
       authClient
-        .from("user_trade_profiles")
+        .from("company_trade_profiles")
         .select("*")
-        .eq("user_id", userId)
+        .eq("company_id", company_id)
         .eq("trade", trade)
         .maybeSingle(),
 
-      // Layer 2: Matching job patterns
+      // Layer 2: Matching job patterns (firm-scoped)
       inputKeywords.length > 0
         ? authClient
-            .from("user_job_patterns")
+            .from("company_job_patterns")
             .select("*")
-            .eq("user_id", userId)
+            .eq("company_id", company_id)
             .eq("trade", trade)
             .overlaps("pattern_keywords", inputKeywords)
         : Promise.resolve({ data: [] }),
@@ -752,11 +752,12 @@ Deno.serve(async (req: Request) => {
         .eq("is_deleted", false)
         .order("name"),
 
-      // Layer 4: All correction learnings for this trade (additions + removals)
+      // Layer 4: All correction learnings for this trade (firm-scoped —
+      // additions + removals from every member's quotes)
       authClient
-        .from("user_material_learnings")
+        .from("company_material_learnings")
         .select("material_name, job_keywords, learning_type")
-        .eq("user_id", userId)
+        .eq("company_id", company_id)
         .eq("trade", trade),
 
       // Layer 4: Keyword denominator (quotes with overlapping keywords)

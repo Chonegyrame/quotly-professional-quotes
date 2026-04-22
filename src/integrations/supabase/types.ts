@@ -169,6 +169,101 @@ export type Database = {
           },
         ]
       }
+      company_job_patterns: {
+        Row: {
+          avg_total_labor: number
+          common_materials: Json
+          company_id: string
+          id: string
+          last_updated_at: string
+          member_quote_ids: string[] | null
+          occurrence_count: number
+          pattern_keywords: string[]
+          trade: string
+          typical_line_items: Json
+        }
+        Insert: {
+          avg_total_labor?: number
+          common_materials?: Json
+          company_id: string
+          id?: string
+          last_updated_at?: string
+          member_quote_ids?: string[] | null
+          occurrence_count?: number
+          pattern_keywords?: string[]
+          trade: string
+          typical_line_items?: Json
+        }
+        Update: {
+          avg_total_labor?: number
+          common_materials?: Json
+          company_id?: string
+          id?: string
+          last_updated_at?: string
+          member_quote_ids?: string[] | null
+          occurrence_count?: number
+          pattern_keywords?: string[]
+          trade?: string
+          typical_line_items?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_job_patterns_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_material_learnings: {
+        Row: {
+          added_at: string
+          company_id: string
+          id: string
+          job_keywords: string[]
+          learning_type: string
+          material_name: string
+          quote_id: string | null
+          trade: string
+        }
+        Insert: {
+          added_at?: string
+          company_id: string
+          id?: string
+          job_keywords?: string[]
+          learning_type: string
+          material_name: string
+          quote_id?: string | null
+          trade: string
+        }
+        Update: {
+          added_at?: string
+          company_id?: string
+          id?: string
+          job_keywords?: string[]
+          learning_type?: string
+          material_name?: string
+          quote_id?: string | null
+          trade?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_material_learnings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_material_learnings_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_memberships: {
         Row: {
           company_id: string
@@ -197,6 +292,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "company_memberships_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_trade_profiles: {
+        Row: {
+          common_materials: Json
+          company_id: string
+          id: string
+          last_computed_at: string
+          total_quotes: number
+          trade: string
+          typical_labor_avg: number
+          typical_labor_max: number
+          typical_labor_min: number
+          typical_labor_p10: number
+          typical_labor_p90: number
+        }
+        Insert: {
+          common_materials?: Json
+          company_id: string
+          id?: string
+          last_computed_at?: string
+          total_quotes?: number
+          trade: string
+          typical_labor_avg?: number
+          typical_labor_max?: number
+          typical_labor_min?: number
+          typical_labor_p10?: number
+          typical_labor_p90?: number
+        }
+        Update: {
+          common_materials?: Json
+          company_id?: string
+          id?: string
+          last_computed_at?: string
+          total_quotes?: number
+          trade?: string
+          typical_labor_avg?: number
+          typical_labor_max?: number
+          typical_labor_min?: number
+          typical_labor_p10?: number
+          typical_labor_p90?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_trade_profiles_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -531,6 +676,7 @@ export type Database = {
       }
       recompute_metrics: {
         Row: {
+          company_id: string | null
           created_at: string
           duration_ms: number
           error_message: string | null
@@ -542,6 +688,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           duration_ms: number
           error_message?: string | null
@@ -553,6 +700,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           duration_ms?: number
           error_message?: string | null
@@ -563,7 +711,15 @@ export type Database = {
           trade?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "recompute_metrics_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trade_materials: {
         Row: {
@@ -601,128 +757,6 @@ export type Database = {
         }
         Relationships: []
       }
-      user_job_patterns: {
-        Row: {
-          avg_total_labor: number
-          common_materials: Json
-          id: string
-          last_updated_at: string
-          member_quote_ids: string[] | null
-          occurrence_count: number
-          pattern_keywords: string[]
-          trade: string
-          typical_line_items: Json
-          user_id: string
-        }
-        Insert: {
-          avg_total_labor?: number
-          common_materials?: Json
-          id?: string
-          last_updated_at?: string
-          member_quote_ids?: string[] | null
-          occurrence_count?: number
-          pattern_keywords?: string[]
-          trade: string
-          typical_line_items?: Json
-          user_id: string
-        }
-        Update: {
-          avg_total_labor?: number
-          common_materials?: Json
-          id?: string
-          last_updated_at?: string
-          member_quote_ids?: string[] | null
-          occurrence_count?: number
-          pattern_keywords?: string[]
-          trade?: string
-          typical_line_items?: Json
-          user_id?: string
-        }
-        Relationships: []
-      }
-      user_material_learnings: {
-        Row: {
-          added_at: string
-          id: string
-          job_keywords: string[]
-          learning_type: string
-          material_name: string
-          quote_id: string | null
-          trade: string
-          user_id: string
-        }
-        Insert: {
-          added_at?: string
-          id?: string
-          job_keywords?: string[]
-          learning_type?: string
-          material_name: string
-          quote_id?: string | null
-          trade: string
-          user_id: string
-        }
-        Update: {
-          added_at?: string
-          id?: string
-          job_keywords?: string[]
-          learning_type?: string
-          material_name?: string
-          quote_id?: string | null
-          trade?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_material_learnings_quote_id_fkey"
-            columns: ["quote_id"]
-            isOneToOne: false
-            referencedRelation: "quotes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_trade_profiles: {
-        Row: {
-          common_materials: Json
-          id: string
-          last_computed_at: string
-          total_quotes: number
-          trade: string
-          typical_labor_avg: number
-          typical_labor_max: number
-          typical_labor_min: number
-          typical_labor_p10: number
-          typical_labor_p90: number
-          user_id: string
-        }
-        Insert: {
-          common_materials?: Json
-          id?: string
-          last_computed_at?: string
-          total_quotes?: number
-          trade: string
-          typical_labor_avg?: number
-          typical_labor_max?: number
-          typical_labor_min?: number
-          typical_labor_p10?: number
-          typical_labor_p90?: number
-          user_id: string
-        }
-        Update: {
-          common_materials?: Json
-          id?: string
-          last_computed_at?: string
-          total_quotes?: number
-          trade?: string
-          typical_labor_avg?: number
-          typical_labor_max?: number
-          typical_labor_min?: number
-          typical_labor_p10?: number
-          typical_labor_p90?: number
-          user_id?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
@@ -747,8 +781,8 @@ export type Database = {
         Args: { check_company_id: string }
         Returns: boolean
       }
-      replace_user_job_patterns: {
-        Args: { p_patterns: Json; p_trade: string; p_user_id: string }
+      replace_company_job_patterns: {
+        Args: { p_company_id: string; p_patterns: Json; p_trade: string }
         Returns: undefined
       }
     }
