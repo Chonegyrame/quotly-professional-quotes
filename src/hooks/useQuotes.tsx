@@ -35,6 +35,7 @@ export function useQuotes() {
       trade?: string;
       keywords?: string[];
       ai_suggestions?: any;
+      ai_prompt_text?: string | null;
       job_size?: number | null;
       job_size_unit?: 'kvm' | 'm' | 'm3' | null;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
@@ -61,6 +62,7 @@ export function useQuotes() {
           trade: input.trade || 'general',
           keywords: input.keywords ?? [],
           ai_suggestions: input.ai_suggestions ?? null,
+          ai_prompt_text: input.ai_prompt_text ?? null,
           job_size: input.job_size ?? null,
           job_size_unit: input.job_size_unit ?? null,
           sent_at: input.status === 'sent' ? new Date().toISOString() : null,

@@ -239,6 +239,7 @@ export default function QuoteBuilder() {
         trade: trade || 'general',
         keywords: aiKeywords.length > 0 ? aiKeywords : undefined,
         ai_suggestions: aiSuggestions || undefined,
+        ai_prompt_text: aiSuggestions?.prompt_text ?? null,
         job_size: hasSize ? jobSize : null,
         job_size_unit: hasSize ? jobSizeUnit : null,
         items: quoteItems.map((qi) => ({

@@ -44,6 +44,7 @@ export default function QuoteDetail() {
         estimatedHours: (dbQ as any).estimated_hours ?? null,
         actualHours: (dbQ as any).actual_hours ?? null,
         completedAt: (dbQ as any).completed_at ?? null,
+        aiPromptText: (dbQ as any).ai_prompt_text ?? null,
         validUntil: dbQ.valid_until || '',
         createdAt: dbQ.created_at,
         sentAt: dbQ.sent_at,
@@ -369,6 +370,24 @@ export default function QuoteDetail() {
           ))}
         </CardContent>
       </Card>
+
+      {quote.aiPromptText && (
+        <Card className="no-print">
+          <CardContent className="p-4">
+            <Collapsible defaultOpen={false}>
+              <CollapsibleTrigger className="flex items-center justify-between w-full group">
+                <h3 className="font-semibold text-sm">AI-prompt (dev)</h3>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <pre className="mt-3 whitespace-pre-wrap break-words text-xs font-mono text-muted-foreground bg-muted/30 border border-border rounded-md p-3 max-h-96 overflow-y-auto">
+                  {quote.aiPromptText}
+                </pre>
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
+      )}
 
       <SendQuoteModal
         open={sendModalOpen}

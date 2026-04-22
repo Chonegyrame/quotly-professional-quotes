@@ -582,6 +582,7 @@ export type Database = {
           actual_hours: number | null
           ai_materials_added: number | null
           ai_materials_removed: number | null
+          ai_prompt_text: string | null
           ai_suggestions: Json | null
           company_id: string
           completed_at: string | null
@@ -611,6 +612,7 @@ export type Database = {
           actual_hours?: number | null
           ai_materials_added?: number | null
           ai_materials_removed?: number | null
+          ai_prompt_text?: string | null
           ai_suggestions?: Json | null
           company_id: string
           completed_at?: string | null
@@ -640,6 +642,7 @@ export type Database = {
           actual_hours?: number | null
           ai_materials_added?: number | null
           ai_materials_removed?: number | null
+          ai_prompt_text?: string | null
           ai_suggestions?: Json | null
           company_id?: string
           completed_at?: string | null

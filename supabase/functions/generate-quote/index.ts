@@ -1007,6 +1007,11 @@ Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
     const allKeywords = [...new Set([...inputKeywords, ...parsed.keywords])];
     parsed.keywords = allKeywords;
 
+    // Dev observability: return the full assembled prompt so the frontend
+    // can persist it on the created quote. Viewed via "Visa AI-prompt" on
+    // QuoteDetail. Removable pre-launch by dropping the column.
+    parsed.prompt_text = promptText;
+
     if (request_id) {
       await adminClient.from("ai_idempotency_cache").insert({
         user_id: userId,
