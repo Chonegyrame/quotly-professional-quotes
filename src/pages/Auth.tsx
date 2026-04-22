@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { PENDING_INVITE_KEY } from './AcceptInvite';
 
 export default function Auth() {
   const { user, loading, signIn, signUp } = useAuth();
@@ -31,7 +32,13 @@ export default function Auth() {
     );
   }
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    const pendingInviteToken = sessionStorage.getItem(PENDING_INVITE_KEY);
+    if (pendingInviteToken) {
+      return <Navigate to={`/invite/${pendingInviteToken}`} replace />;
+    }
+    return <Navigate to="/" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

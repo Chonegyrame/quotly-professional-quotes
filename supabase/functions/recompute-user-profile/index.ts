@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   authenticate,
   checkIpRateLimit,
@@ -364,6 +365,13 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  let userIdForLog: string | null = null;
+  let tradeForLog: string | null = null;
+  let quoteCountForLog = 0;
+  let patternsForLog = 0;
+  let metricsClient: SupabaseClient | null = null;
+
   try {
     if (req.method !== "POST") {
       return jsonResponse({ error: "Method not allowed" }, 405);
@@ -372,6 +380,8 @@ Deno.serve(async (req: Request) => {
     const auth = await authenticate(req, FUNCTION_NAME);
     if (!auth.ok) return auth.response;
     const { userId, ip, authClient, adminClient } = auth;
+    userIdForLog = userId;
+    metricsClient = adminClient;
 
     const ipResp = await checkIpRateLimit(
       adminClient,
@@ -391,6 +401,7 @@ Deno.serve(async (req: Request) => {
     if (!company_id || !trade) {
       return jsonResponse({ error: "Missing company_id or trade" }, 400);
     }
+    tradeForLog = trade;
 
     // --------------------------------------------------------
     // Fetch all sent quotes for this user + trade
@@ -526,28 +537,29 @@ Deno.serve(async (req: Request) => {
     // Layer 2: Detect patterns and replace stored patterns
     // --------------------------------------------------------
     const patterns = detectPatterns(quotesWithMaterials);
+    quoteCountForLog = quotesWithMaterials.length;
+    patternsForLog = patterns.length;
 
-    // Delete old patterns for this user+trade, then insert fresh
-    await adminClient
-      .from("user_job_patterns")
-      .delete()
-      .eq("user_id", userId)
-      .eq("trade", trade);
-
-    if (patterns.length > 0) {
-      await authClient.from("user_job_patterns").insert(
-        patterns.map((p) => ({
-          user_id: userId,
-          trade,
+    // Atomic swap via RPC — DELETE + INSERT run in one transaction so a
+    // timeout mid-call can't leave the user with zero patterns. See migration
+    // 20260422120000_atomic_replace_job_patterns.sql.
+    const { error: rpcError } = await adminClient.rpc(
+      "replace_user_job_patterns",
+      {
+        p_user_id: userId,
+        p_trade: trade,
+        p_patterns: patterns.map((p) => ({
           pattern_keywords: p.pattern_keywords,
           occurrence_count: p.occurrence_count,
           common_materials: p.common_materials,
           typical_line_items: p.typical_line_items,
           avg_total_labor: p.avg_total_labor,
           member_quote_ids: p.member_quote_ids,
-          last_updated_at: new Date().toISOString(),
-        }))
-      );
+        })),
+      },
+    );
+    if (rpcError) {
+      throw new Error(`replace_user_job_patterns failed: ${rpcError.message}`);
     }
 
     // --------------------------------------------------------
@@ -648,12 +660,59 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      fn: FUNCTION_NAME,
+      status: "ok",
+      user_id: userIdForLog,
+      trade: tradeForLog,
+      quote_count: quoteCountForLog,
+      patterns_found: patternsForLog,
+      duration_ms: durationMs,
+    }));
+
+    // Persistent metrics row — fire-and-forget, must not break the recompute.
+    metricsClient?.from("recompute_metrics").insert({
+      user_id: userIdForLog,
+      trade: tradeForLog,
+      quote_count: quoteCountForLog,
+      patterns_found: patternsForLog,
+      duration_ms: durationMs,
+      status: "ok",
+    }).then(({ error }) => {
+      if (error) console.error("[recompute-user-profile] metrics insert failed:", error.message);
+    });
+
     return new Response(
       JSON.stringify({ success: true, patterns_found: patterns.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("recompute-user-profile error:", err);
+    const durationMs = Date.now() - startTime;
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(JSON.stringify({
+      fn: FUNCTION_NAME,
+      status: "error",
+      user_id: userIdForLog,
+      trade: tradeForLog,
+      quote_count: quoteCountForLog,
+      patterns_found: patternsForLog,
+      duration_ms: durationMs,
+      error: errorMessage,
+    }));
+
+    metricsClient?.from("recompute_metrics").insert({
+      user_id: userIdForLog,
+      trade: tradeForLog,
+      quote_count: quoteCountForLog,
+      patterns_found: patternsForLog,
+      duration_ms: durationMs,
+      status: "error",
+      error_message: errorMessage.slice(0, 500),
+    }).then(({ error }) => {
+      if (error) console.error("[recompute-user-profile] metrics insert failed:", error.message);
+    });
+
     return new Response(
       JSON.stringify({ error: "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

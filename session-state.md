@@ -1,60 +1,80 @@
 # Session State
 
-Last updated: 2026-04-20 (evening)
+Last updated: 2026-04-22
 Branch: main
+
+**⚡ NEXT ACTION when opening a fresh session:** Chunk B of the firm-model migration — rewrite the learning system to be firm-scoped. Full spec in [docs/firm-model-migration.md](docs/firm-model-migration.md) §6. Chunk A shipped + verified this session.
 
 ## What was done this session
 
-- **Executed `.claude/plans/learning-pipeline-hardening.md` end-to-end** via /bibzer-build. Plan addressed the broken learning pipeline (`supabase` ReferenceError silently killing Layer 1/2/4 since 2026-04-19 Part 1 redeploy) plus ten converged findings from the three-agent architectural critique.
-- **New migration** `supabase/migrations/20260420120000_learning_pipeline_hardening.sql`: `user_job_patterns.member_quote_ids uuid[]`; `user_material_learnings.quote_id uuid` + partial unique index on `(quote_id, material_name, learning_type) WHERE quote_id IS NOT NULL`; new `ai_idempotency_cache` table (composite PK `user_id,request_id`, `input_hash`, `response`, `created_at` idx) with RLS (user SELECT own, service_role ALL); new `claim_ai_usage_slot(p_user_id, p_daily_limit)` RPC using `pg_advisory_xact_lock` + grant to service_role.
-- **`recompute-user-profile/index.ts`**: renamed all 5 bare `supabase.from(...)` → `adminClient.from(...)` (the ReferenceError fix); captured material `unit` through `computeTradeProfile` and `detectPatterns` via a `Map<unit,count>` with `pickDominantUnit` tie-break; raised `detectPatterns` min cluster size 2 → 3; wrote `member_quote_ids: group.map(q => q.id)` into each pattern; added `quote_id` to Layer 4 learning rows; DELETE-by-quote_id before upsert with `onConflict: "quote_id,material_name,learning_type", ignoreDuplicates: true`.
-- **`generate-quote/index.ts`**: added `temperature: 0` to inline Haiku call; added `sha256Hex` helper + `request_id` body param; idempotency cache read (60s cutoff + input-hash match) and write gated on `request_id`; replaced per-user daily-limit SELECT-count + terminal ai_usage INSERT pair with atomic `claim_ai_usage_slot` RPC (returns 429 on false); rewrote `scopeMembersToPattern` to use `member_quote_ids` directly with legacy `scoreSharedKeywords` fallback + `console.warn`; fixed hardcoded `st` → `${m.unit ?? "st"}` in Layer 1 + Layer 2 + sub-aggregate material lines; added weak-tier Layer 5 fallback (`isWeakTier` flag: 2 smaller-only or 2 larger-only neighbors, labels header `baserad på 2 {mindre|större} jobb: sizes — extrapolerad`, skips CV filter); added sub-aggregate caveat `litet urval, använd som vägledning` when `groupSize === 2 && groupSize/totalInCluster < 0.05`.
-- **`extract-keywords/index.ts`**: added `temperature: 0` to Haiku fetch body.
-- **`src/hooks/useQuotes.tsx`**: replaced silent `.catch(() => {})` on the `recompute-user-profile` invocation with `.catch((err) => console.error("[recompute-user-profile] failed:", err))`.
-- **Deploys verified live**: `npx supabase db push`, `npx supabase gen types ...`, and `npx supabase functions deploy recompute-user-profile generate-quote extract-keywords` all ran clean. Dashboard shows "a few seconds ago" timestamps on all three — no CLI bug #4059 silent-skip this time. User ran through the post-deploy smoke tests.
-- **Plan status:** `.claude/plans/learning-pipeline-hardening.md` marked IN PROGRESS with 5/6 files ticked and 19/22 acceptance criteria ticked. Build log entry appended for today.
+- **Chunk A of firm-model migration — shipped + verified.**
+  - 4 migrations applied to prod: `company_memberships` + `company_invites` + helpers + backfill (`20260422140000`), RLS rewrite on 7 tables (`20260422150000`), policy TO-authenticated tighten (`20260422160000`), `get_company_members` RPC (`20260422170000`).
+  - 2 new edge functions deployed: `send-team-invite`, `accept-team-invite`. Both use `verify_jwt=false` + `authenticate()` helper per project JWT pattern.
+  - Frontend: `useCompany` rewritten to query via `company_memberships` join (now returns `role`). New hooks `useCompanyMembers`, `useCompanyInvites`, `useCurrentRole`. New `src/lib/permissions.ts` with 7-permission helper. New `TeamSection` component on Settings page. New `/invite/:token` page + route + post-signup sessionStorage redirect.
+  - DB types regenerated to include new tables + RPCs.
+  - Trigger `on_company_created` auto-creates the owner membership row when a new company is inserted — keeps signup flow working unchanged.
+  - Pre-existing policies on `quote_events` / `quote_item_materials` / `quote_items` / `quotes` for `anon` (public customer view at `/q/:id`) were explicitly preserved; only authenticated-role policies got rewritten.
+- **Verified end-to-end:** Invited `gwallin.photo@gmail.com` from Brunn boofing owner. Used the raw invite token + `/invite/<token>` URL (email send blocked by Resend sandbox — see gotcha below). Signed up as that email, auto-redirected through `/auth` → `/invite/:token` → accepted. New user (`a29ceea2-c17a-402a-a323-69db57366d57`) is now `member` of Brunn boofing. Zero RLS errors in Postgres logs during the test.
+- **Flagged pre-existing `/q/:id` accept/decline bug as a separate task** via spawn_task. Customer-facing accept/decline silently fails for anon users because RLS blocks the writes; UI shows fake success. Not caused by this migration — pre-existed. Fix will route accept/decline through a new public edge function `respond-to-quote`.
+- **One small UX fix during verification:** `TeamSection.handleSendInvite` now unpacks `FunctionsHttpError.context` to surface the actual Swedish error message instead of the generic "Edge Function returned a non-2xx status code".
 
 ## Current state
 
-- Learning pipeline is functional again on the deployed edge functions (`extract-keywords`, `generate-quote`, `recompute-user-profile` all re-deployed today and tested by the user).
-- Types file (`src/integrations/supabase/types.ts`) regenerated today against the live project and reflects the new `member_quote_ids` column, `quote_id` column, and `ai_idempotency_cache` table.
-- Lint unchanged-category baseline: 225 problems (vs plan baseline 221) — same six categories, no new ones. Tests: 1/1 vitest passing.
-- The full plan acceptance matrix is now effectively met after the user's smoke-test; three plan boxes remain unticked (see next section) because I couldn't tick them without observing the runtime myself.
+- **Firm model Chunk A is live in prod.** Multi-user-per-firm works. `gustav.wallin123@gmail.com` owns Brunn boofing + the new `gwallin.photo@gmail.com` is a member of Brunn boofing. `Wallin taklägg` still single-user (owner only).
+- **Chunk B is NOT started.** The learning tables (`user_trade_profiles`, `user_job_patterns`, `user_material_learnings`) are still keyed by `user_id`. `recompute-user-profile` edge function still at v9 from last session — needs rewrite for firm-scoping.
+- **Fortnox** still deferred until Chunk B ships (see §2 of migration doc).
+- **`companies.user_id` column** retained as historical "original creator" marker. RLS no longer reads it for auth — only the trigger on insert does.
 
 ## Uncommitted changes
 
-Modified: `.gitignore`, `session-state.md`, `src/components/AIQuoteModal.tsx`, `src/hooks/useQuotes.tsx`, `src/integrations/supabase/types.ts`, `src/main.tsx`, `src/pages/Analytics.tsx`, `src/pages/QuoteBuilder.tsx`, `supabase/config.toml`, `supabase/functions/extract-keywords/index.ts`, `supabase/functions/generate-pdf/index.ts`, `supabase/functions/generate-quote/index.ts`, `supabase/functions/recompute-user-profile/index.ts`, `supabase/functions/send-quote/index.ts`.
+Modified (from this session):
+- `src/App.tsx` — added `/invite/:token` route, added `/invite/` to `isPublicRoute` check
+- `src/hooks/useCompany.tsx` — rewrote to query via `company_memberships`, returns `role` now
+- `src/integrations/supabase/types.ts` — regenerated after migrations
+- `src/pages/Auth.tsx` — post-login redirect checks sessionStorage for pending invite
+- `src/pages/Settings.tsx` — imports + renders `<TeamSection />` at the bottom
+- `supabase/config.toml` — registered `send-team-invite` + `accept-team-invite` with `verify_jwt=false`
 
-Untracked: `photo-feature-brief.md`, `supabase/functions/_shared/` (scoring.ts + auth.ts from prior sessions), all four `supabase/migrations/202604*.sql` files (including today's `20260420120000_learning_pipeline_hardening.sql`).
+Untracked (from this session):
+- `src/components/TeamSection.tsx` — members list + invite form + pending invites UI
+- `src/hooks/useCompanyInvites.tsx`, `src/hooks/useCompanyMembers.tsx`, `src/hooks/useCurrentRole.tsx`
+- `src/lib/permissions.ts`
+- `src/pages/AcceptInvite.tsx`
+- `supabase/functions/send-team-invite/index.ts`
+- `supabase/functions/accept-team-invite/index.ts`
+- `supabase/migrations/20260422140000_firm_model_foundation.sql`
+- `supabase/migrations/20260422150000_firm_model_rls_rewrite.sql`
+- `supabase/migrations/20260422160000_firm_model_tighten_new_table_policies.sql`
+- `supabase/migrations/20260422170000_get_company_members_rpc.sql`
 
-Today's edits are on top of prior-session uncommitted work (Phase 1 job_size, auth/rate-limit hardening, phrase-keywords/weighted-scoring, Layer 5 + sub-aggregates). Nothing has been committed; the branch is up to date with `origin/main`.
+Also carry-over dirty from prior sessions: `index.html`, `tailwind.config.ts`, `src/components/FlipDeck/`, `src/components/LearningSlot.tsx`, `src/components/LearningSlot.backup.tsx`, `src/pages/LandingPage.tsx` from last session, plus session's own changes to `supabase/functions/recompute-user-profile/index.ts`.
+
+No commits this session.
 
 ## What comes next
 
-- **Flip the three runtime-only acceptance boxes** in `.claude/plans/learning-pipeline-hardening.md` to `[x]` now that the user verified deploy + smoke-tested: (a) `last_computed_at` updates on quote send, (b) 3× Swedish determinism via `extract-keywords`, (c) `types.ts` regenerated. Then set plan header to `**Status:** DONE`.
-- **Commit.** The diff pool is now very large (today's work plus several sessions). Suggest splitting into a few logical commits rather than one monster: (1) learning-pipeline-hardening (migration + 3 edge functions + useQuotes one-liner + types.ts), (2) prior uncommitted phrase-keywords/scoring + Layer 5 work, (3) the auth/rate-limit hardening, (4) the unrelated `AIQuoteModal`/`Analytics`/`QuoteBuilder`/`main.tsx`/`send-quote`/`generate-pdf`/`config.toml` edits whose provenance isn't clear from this session alone.
-- **Watch logs** for `[generate-quote] legacy pattern fallback — no member_quote_ids`. Once it stops firing for active users, the legacy `user_job_patterns` pool has drained.
-- **Revisit parked items** when data accumulates: Layer 4 recency + in-SQL aggregation; multi-cluster membership / hierarchical clustering; prompt-block interleaved-vs-grouped ordering flip if Claude output mis-attributes across clusters.
-- **Previously flagged cleanup** still open: stray `quotly\supabase\` folder at outer path; orphaned `send-quote-email` edge function in Dashboard; `(row as any).job_size` casts in `useQuotes.tsx` + `QuoteBuilder.tsx`; silent-drop bug in `updateQuote` for `keywords` + `ai_suggestions`.
+1. **PRIMARY — Chunk B of firm-model migration.** Full spec in [docs/firm-model-migration.md](docs/firm-model-migration.md) §6. Drop the three `user_*` learning tables, recreate as `company_*` scoped, replace `replace_user_job_patterns` RPC with `replace_company_job_patterns`, rewrite `recompute-user-profile` + `generate-quote` edge functions to read/write by `company_id`, trigger one recompute per firm to rebuild learning. §10 has the checkpoint tests. Main assistant (not /buildreal) per §13 recommendation — surface area is smaller than Chunk A.
+2. **Then resolve the spawned task** for the pre-existing `/q/:id` accept/decline bug. Already has a full brief.
+3. **Then Fortnox integration (Chunk C)** when partner approval comes through.
+4. **Smaller backlog:**
+   - Deferred UI: change-role dropdown + transfer-ownership flow in Team section (skipped for v1 — add when you actually have a firm managing itself).
+   - Deferred: post-signup email→invite auto-match (plan §7.4 last bullet). Would need a lookup edge function since fresh users can't read invites. Low priority — primary flow (click email link) works fine.
+   - Cleanup: commit this session's work + last session's LearningSlot carryover.
+   - Cleanup: verify a domain in Resend before sending real customer quote emails. Current setup only works for `gustav.wallin123@gmail.com` via sandbox sender.
 
 ## Open questions
 
-- Whether to raise the sub-aggregate caveat share threshold above 5% if real Claude output shows over-trust on small samples. Currently fires only when filtered==2 AND share<5% (so only on clusters ≥41 members). User already chose to keep 2-member sub-aggregates in smaller clusters as signal.
-- Layer 5 CV<30% per-trade tuning still open (paint vs insulation variance). Defer until real per-trade data lands.
-- `ai_idempotency_cache` growth — no scheduled cleanup job. Read-time 60s filter keeps lookups correct. Revisit at ~10k rows or if lookups slow.
-- `pattern_keywords` 40% threshold drop to 25% — still parked awaiting 100-quote real-usage data.
+- Whether to eventually drop `companies.user_id` column once we're confident nothing reads it for auth. Low priority — audit the codebase first.
+- Whether invite emails should use a different `from` address than `send-quote-email` (currently both use `onboarding@resend.dev` sandbox). Moot until you verify a domain.
 
 ## Context that is easy to forget
 
-- **The ReferenceError was the lede.** Every other piece of today's plan was architectural polish that couldn't be meaningfully tested until recompute ran again. If anything in the learning pipeline regresses, check `adminClient` rename first.
-- **Forward-only migration.** No backfill for pre-migration `user_job_patterns.member_quote_ids` (NULL) — those rebuild on the user's next quote send via the `console.warn`-flagged fallback. No backfill for pre-migration `user_material_learnings.quote_id` (NULL) — accept one-time double-count on re-sent pre-migration AI quotes. Both documented in the plan's Risks section.
-- **Atomic daily-limit uses `pg_advisory_xact_lock(hashtextextended(user_id::text, 0))`.** Serializes per-user RPC calls for the transaction; fine at launch scale.
-- **Idempotency cache hash inputs are `{text, image, company_id, trade, job_size, job_size_unit}`** — different text or image with same `request_id` → cache miss (intentional). `request_id` omitted → no read, no write.
-- **The plan's "fire-and-forget" semantics still hold** for `recompute-user-profile` from the client — but it no longer swallows errors. A recompute failure will show in the browser console.
-- **Haiku determinism is "effectively deterministic at fixed model snapshot"** per Anthropic — acceptance criterion checks 3 consecutive calls within 1 minute, not absolute determinism across unknown time.
-- **Supabase CLI bug #4059** (silent function-deploy skip) did NOT bite us today — all three functions showed fresh timestamps. If future deploys show "No change found," delete in Dashboard and redeploy.
-- **RLS on `ai_idempotency_cache`:** users read their own rows; service_role has ALL. Edge function uses `adminClient` for writes.
-- **Supabase project id:** `cimixmdgcyozwmzboxfk`.
-- **Rate-limit tiers (hourly per-IP):** generate-quote 10, extract-keywords 80, send-quote 20, generate-pdf 50, recompute-user-profile 30. Global 24h AI ceiling: 500 combined generate-quote + extract-keywords. DAILY_LIMIT per user for generate-quote: 20.
-- **Pre-existing lint baseline** is 221 problems across 6 categories; today's work moved total to 225 without adding categories.
+- **Resend sandbox limitation.** `onboarding@resend.dev` only delivers to the Resend account owner's email (`gustav.wallin123@gmail.com`). Any other recipient gets silently dropped. This applies to `send-team-invite` AND the existing `send-quote-email`. For testing invites to other emails, grab the token from `company_invites` and go directly to `/invite/<token>`.
+- **supabase-js non-2xx behavior.** `supabase.functions.invoke` throws `FunctionsHttpError` on 4xx/5xx. The JSON body is on `err.context.response` — read it with `.json()` to surface the real error. `TeamSection.handleSendInvite` has the pattern.
+- **The `on_company_created` trigger** is load-bearing for signup — it auto-creates the owner membership when a new company is inserted. If you ever drop it, new signups will end up with a company but no membership, and `useCompany` will return null.
+- **Role-based RLS pattern:** `is_company_member(company_id)` for SELECT/INSERT/UPDATE access, `company_role(company_id) IN ('owner', 'admin')` for DELETE and company settings. Members can do everything except delete quotes/materials/templates or edit company settings.
+- **Plans for Chunk B rely on the two test firms being sparse** (few quotes). Because of that, the plan drops + recreates the learning tables rather than doing a column rename + backfill. If you add 100+ quotes before running Chunk B, reconsider the approach.
+- **Scroll-driven hero animations** still can't be verified in Claude Preview harness — verify visually in Chrome (carry-over).
+- **Pre-existing TS error at LandingPage.tsx:835** unrelated (carry-over).
+- **Two companies exist in DB:** Brunn boofing (owner + 1 member as of this session) and Wallin taklägg (owner only).
 - capybara

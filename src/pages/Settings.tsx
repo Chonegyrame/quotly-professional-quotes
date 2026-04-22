@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCompany } from '@/hooks/useCompany';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { TeamSection } from '@/components/TeamSection';
 
 function compressLogoImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -280,6 +281,8 @@ export default function Settings() {
         <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleSave} disabled={updateCompany.isPending}>
           <Save className="h-4 w-4" /> Spara inställningar
         </Button>
+
+        <TeamSection />
       </div>
     </div>
   );

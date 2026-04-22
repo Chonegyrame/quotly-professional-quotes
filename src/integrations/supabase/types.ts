@@ -125,6 +125,85 @@ export type Database = {
         }
         Relationships: []
       }
+      company_invites: {
+        Row: {
+          accepted_at: string | null
+          company_id: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          role: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          company_id: string
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          role: string
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          company_id?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          role?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_invites_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_memberships: {
+        Row: {
+          company_id: string
+          id: string
+          invited_by: string | null
+          joined_at: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_memberships_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materials: {
         Row: {
           category: string | null
@@ -450,6 +529,42 @@ export type Database = {
           },
         ]
       }
+      recompute_metrics: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          error_message: string | null
+          id: string
+          patterns_found: number
+          quote_count: number
+          status: string
+          trade: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          duration_ms: number
+          error_message?: string | null
+          id?: string
+          patterns_found?: number
+          quote_count?: number
+          status: string
+          trade?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          patterns_found?: number
+          quote_count?: number
+          status?: string
+          trade?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       trade_materials: {
         Row: {
           category: string
@@ -617,7 +732,25 @@ export type Database = {
         Args: { p_daily_limit: number; p_user_id: string }
         Returns: boolean
       }
+      company_role: { Args: { check_company_id: string }; Returns: string }
+      get_company_members: {
+        Args: { p_company_id: string }
+        Returns: {
+          email: string
+          joined_at: string
+          role: string
+          user_id: string
+        }[]
+      }
       get_next_quote_number: { Args: { p_company_id: string }; Returns: string }
+      is_company_member: {
+        Args: { check_company_id: string }
+        Returns: boolean
+      }
+      replace_user_job_patterns: {
+        Args: { p_patterns: Json; p_trade: string; p_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

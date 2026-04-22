@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { FlipDeckSection } from '@/components/FlipDeck/FlipDeckSection';
+import { LearningSlot } from '@/components/LearningSlot';
 import {
   AnimatePresence,
   motion,
@@ -14,8 +16,6 @@ import {
   CheckCircle2,
   FileText,
   Sparkles,
-  Send,
-  BarChart3,
   Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -129,49 +129,6 @@ function ScrollTypeWriter({
 /*  Data                                                               */
 /* ------------------------------------------------------------------ */
 
-const accordionFeatures = [
-  {
-    index: '01',
-    title: 'AI genererar offert från kundens förfrågan',
-    description: 'Skapa tydliga offerter med arbete och material uppdelat. Se professionell ut från dag ett.',
-    icon: FileText,
-    bg: 'bg-stone-900',
-    text: 'text-white',
-    muted: 'text-stone-400',
-    svgColor: '#4f6070',
-  },
-  {
-    index: '02',
-    title: 'Individuell lärandemekanism som gör att offerterna blir bättre och bättre',
-    description: 'AI:n läser din fritext och skapar en komplett offert med rätt material och timpris.',
-    icon: Sparkles,
-    bg: 'bg-teal-600',
-    text: 'text-white',
-    muted: 'text-teal-200',
-    svgColor: '#81c8be',
-  },
-  {
-    index: '03',
-    title: 'Generera PDF och skicka direkt från Quotly',
-    description: 'PDF-offert direkt i mejlet. Kunden öppnar på sin mobil, du får kvitto direkt.',
-    icon: Send,
-    bg: 'bg-orange-500',
-    text: 'text-white',
-    muted: 'text-orange-100',
-    svgColor: '#fcd4a0',
-  },
-  {
-    index: '04',
-    title: 'Analys och insikter',
-    description: 'Se exakt när offerten öppnades. Följ upp i rätt stund och stäng fler affärer.',
-    icon: BarChart3,
-    bg: 'bg-stone-100',
-    text: 'text-stone-900',
-    muted: 'text-stone-500',
-    svgColor: '#94a3b8',
-  },
-];
-
 const steps = [
   {
     step: '1',
@@ -189,126 +146,6 @@ const steps = [
     description: 'Skicka med ett klick. Se när kunden öppnar och svarar.',
   },
 ];
-
-/* ------------------------------------------------------------------ */
-/*  Feature accordion                                                  */
-/* ------------------------------------------------------------------ */
-
-function DecorativeSVG({ index, color }: { index: number; color: string }) {
-  if (index === 0) {
-    const dots = [];
-    for (let row = 0; row < 7; row++) {
-      for (let col = 0; col < 7; col++) {
-        dots.push(
-          <circle
-            key={`${row}-${col}`}
-            cx={col * 22 + 11}
-            cy={row * 22 + 11}
-            r={2.5}
-            fill={color}
-            opacity={0.25 + ((row + col) / 12) * 0.55}
-          />,
-        );
-      }
-    }
-    return <svg width="154" height="154" viewBox="0 0 154 154">{dots}</svg>;
-  }
-  if (index === 1) {
-    return (
-      <svg width="160" height="130" viewBox="0 0 160 130" fill="none">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <path
-            key={i}
-            d={`M 0 ${30 + i * 14} Q 40 ${8 + i * 14} 80 ${30 + i * 14} T 160 ${30 + i * 14}`}
-            stroke={color}
-            strokeWidth="1.5"
-            opacity={0.25 + i * 0.1}
-          />
-        ))}
-      </svg>
-    );
-  }
-  if (index === 2) {
-    return (
-      <svg width="160" height="160" viewBox="0 0 160 160">
-        {Array.from({ length: 28 }, (_, i) => {
-          const angle = (i / 28) * Math.PI * 2;
-          const r2 = 58 + Math.sin(i * 1.4) * 14;
-          return (
-            <line
-              key={i}
-              x1={80 + Math.cos(angle) * 18}
-              y1={80 + Math.sin(angle) * 18}
-              x2={80 + Math.cos(angle) * r2}
-              y2={80 + Math.sin(angle) * r2}
-              stroke={color}
-              strokeWidth="1"
-              opacity="0.65"
-            />
-          );
-        })}
-      </svg>
-    );
-  }
-  return (
-    <svg width="160" height="160" viewBox="0 0 160 160" fill="none">
-      {[18, 34, 50, 64, 78].map((r, i) => (
-        <ellipse
-          key={i}
-          cx="80"
-          cy="88"
-          rx={r * 1.5}
-          ry={r}
-          stroke={color}
-          strokeWidth="1.5"
-          opacity={0.2 + i * 0.12}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function FeatureAccordion() {
-  const [hovered, setHovered] = useState<number | null>(null);
-  return (
-    <div className="flex h-[500px] w-full overflow-hidden">
-      {accordionFeatures.map((f, i) => {
-        const Icon = f.icon;
-        const isHov = hovered === i;
-        const anyHov = hovered !== null;
-        return (
-          <div
-            key={i}
-            onMouseEnter={() => setHovered(i)}
-            onMouseLeave={() => setHovered(null)}
-            className={`${f.bg} relative flex flex-col justify-between p-8 overflow-hidden cursor-default`}
-            style={{ flex: anyHov ? (isHov ? 2.0 : 0.75) : 1, transition: 'flex 0.35s ease' }}
-          >
-            <div>
-              <div className={`${f.text} opacity-50 mb-3`}>
-                <Icon className="h-6 w-6" />
-              </div>
-              <h3 className={`font-heading text-lg font-bold leading-snug ${f.text}`}>
-                {f.title}
-              </h3>
-            </div>
-            <div className="flex flex-1 items-center justify-center py-6 pointer-events-none">
-              <DecorativeSVG index={i} color={f.svgColor} />
-            </div>
-            <div>
-              <p className={`text-xs font-mono tracking-widest mb-3 ${f.muted}`}>{f.index} / 04</p>
-              <p
-                className={`text-sm leading-relaxed ${f.muted} transition-opacity duration-300 ${isHov ? 'opacity-100' : 'opacity-0'}`}
-              >
-                {f.description}
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /*  Feature overlay (expands from showcase card)                       */
@@ -477,10 +314,11 @@ function fmtSEK(n: number): string {
 }
 
 const QUOTE_LINES = [
-  { desc: 'Arbete',   sub: 'Målning inomhus',      qty: 8,  uLabel: 'h',  unitPrice: 450 },
-  { desc: 'Väggfärg', sub: 'Vit, 3\u00a0l\u00a0×\u00a04 burkar', qty: 12, uLabel: 'l',  unitPrice: 89  },
-  { desc: 'Primer',   sub: 'Grundning',             qty: 6,  uLabel: 'l',  unitPrice: 75  },
-  { desc: 'Rullset',  sub: 'Verktyg & tillbehör',  qty: 1,  uLabel: 'st', unitPrice: 149 },
+  { desc: 'Arbete',             sub: 'VVS — elementbyte',      qty: 4, uLabel: 'h',  unitPrice: 650 },
+  { desc: 'Element 600×1200',   sub: 'Radiator, vit',           qty: 1, uLabel: 'st', unitPrice: 2800 },
+  { desc: 'Termostatventil',    sub: 'RA-N, vinklad',           qty: 1, uLabel: 'st', unitPrice: 450 },
+  { desc: 'Elementfäste',       sub: 'Vägg, par',               qty: 2, uLabel: 'st', unitPrice: 125 },
+  { desc: 'Kopplingsrör 15 mm', sub: 'Krom, tillskärning',      qty: 2, uLabel: 'm',  unitPrice: 85 },
 ];
 
 const Q_SUBTOTAL = QUOTE_LINES.reduce((s, l) => s + l.qty * l.unitPrice, 0);
@@ -504,7 +342,7 @@ const QUOTE_PLAN = QUOTE_SEGS.flatMap(({ key, value }) =>
   [...value].map((_, ci) => ({ key, ci }))
 );
 
-function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
+function QuoteSlot({ progress, btnScale }: { progress: MotionValue<number>; btnScale: MotionValue<number> }) {
   const [revealed, setRevealed] = useState(0);
   const prefersReduced =
     typeof window !== 'undefined' &&
@@ -551,7 +389,7 @@ function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
         backgroundImage: 'radial-gradient(circle, rgba(100,116,139,0.18) 1px, transparent 1px)',
         backgroundSize: '16px 16px',
       }}
-      aria-label="Exempeloffert: Puts vägg — badrum"
+      aria-label="Exempeloffert: Byt element — sovrum"
     >
       <div
         className="absolute bg-white border border-stone-200 rounded-xl flex flex-col overflow-hidden"
@@ -576,26 +414,47 @@ function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
         {/* Meta */}
         <div className="mb-2 flex-shrink-0">
           <div className="font-heading text-xs font-bold text-foreground leading-snug">
-            Puts vägg — badrum
+            Byt element — sovrum
           </div>
           <div className="font-mono text-[9px] text-stone-400 mt-0.5">
             Andersson,&nbsp;K. · Storgatan&nbsp;12 · 2026-04-20
           </div>
         </div>
 
-        {/* Column headers */}
-        <div
-          className="grid font-mono uppercase text-stone-400 border-b border-stone-200 pb-1 mb-1 flex-shrink-0"
-          style={{ gridTemplateColumns: '1fr 36px 52px 56px', fontSize: '8px', letterSpacing: '0.1em' }}
-        >
-          <span>Beskrivning</span>
-          <span className="text-right">Antal</span>
-          <span className="text-right">À-pris</span>
-          <span className="text-right">Totalt</span>
+        {/* Combined header: Beskrivning label + customer request + Generera offert button */}
+        <div className="flex items-center gap-2 border-b border-stone-200 pb-1 mb-1 flex-shrink-0">
+          <span
+            className="font-mono uppercase text-stone-400 flex-shrink-0"
+            style={{ fontSize: '8px', letterSpacing: '0.1em' }}
+          >
+            Beskrivning
+          </span>
+          <span
+            className="italic text-stone-600 truncate"
+            style={{ fontSize: '9.5px', lineHeight: 1.3 }}
+          >
+            Hej, vi behöver byta ut ett <span className="not-italic font-semibold text-orange-700">element</span> i <span className="not-italic font-semibold text-orange-700">sovrummet</span>.
+          </span>
+          <motion.button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            style={{
+              scale: btnScale,
+              fontSize: '12px',
+              padding: '7px 14px',
+              boxShadow: '0 3px 10px hsl(17 88% 40% / 0.4)',
+              transformOrigin: 'center',
+            }}
+            className="ml-auto flex-shrink-0 flex items-center gap-1.5 rounded-md bg-accent text-white font-semibold leading-none"
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
+            Generera offert
+          </motion.button>
         </div>
 
         {/* Line items */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="overflow-hidden">
           {QUOTE_LINES.map((line, i) => {
             if ((revMap[`l${i}d`] ?? 0) === 0) return null;
             return (
@@ -628,6 +487,9 @@ function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
           })}
         </div>
 
+        {/* Spacer — half of remaining space goes here (between items and footer) */}
+        <div style={{ flexGrow: 1 }} />
+
         {/* Footer totals */}
         {(revMap['sub'] ?? 0) > 0 && (
           <div className="border-t border-dashed border-stone-200 pt-1.5 mt-1 flex-shrink-0 flex flex-col" style={{ gap: '2px' }}>
@@ -657,10 +519,45 @@ function QuoteSlot({ progress }: { progress: MotionValue<number> }) {
           <div className="h-[2px] bg-stone-100 rounded-full overflow-hidden">
             <div className="h-full bg-orange-500 rounded-full" style={{ width: `${pct}%`, transition: 'none' }} />
           </div>
-          <div className="mt-0.5 text-right font-mono text-stone-400" style={{ fontSize: '8px' }}>
-            {isDone ? 'Offert\u00a0klar\u00a0·\u00a0skicka' : `${pct}%\u00a0skriven`}
-          </div>
+          <AnimatePresence mode="wait">
+            {isDone ? (
+              <motion.div
+                key="done"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className="mt-1.5 flex flex-col items-end gap-1"
+              >
+                <button
+                  className="rounded bg-orange-500 text-white font-semibold leading-none"
+                  style={{ fontSize: '11px', padding: '6px 18px' }}
+                >
+                  Skicka
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-[3px] border border-orange-400 bg-orange-50">
+                    <svg width="7" height="5" viewBox="0 0 7 5" fill="none">
+                      <path d="M1 2.5L2.8 4.2L6 1" stroke="#f97316" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <span className="font-mono text-stone-500" style={{ fontSize: '10px' }}>bifoga pdf som bilaga</span>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="progress"
+                exit={{ opacity: 0 }}
+                className="mt-0.5 text-right font-mono text-stone-400"
+                style={{ fontSize: '8px' }}
+              >
+                {`${pct}%\u00a0skriven`}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
+        {/* Spacer — other half of remaining space goes here (below button) */}
+        <div style={{ flexGrow: 1 }} />
       </div>
     </div>
   );
@@ -674,19 +571,41 @@ export default function LandingPage() {
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const selectedItem = selectedFeature ? showcaseItems.find((s) => s.id === selectedFeature) : null;
 
-  const featureRef = useRef(null);
   const showcaseRef = useRef(null);
+  // FlipDeck exit: shrink/fade starts BEFORE dark is visible, card 4 barely moves,
+  // stays peeking out the top even when dark covers 80% of the viewport
+  const flipDeckRef = useRef(null);
+  const { scrollYProgress: flipDeckProgress } = useScroll({
+    target: flipDeckRef,
+    offset: ['end 97%', 'end 20%'],
+  });
+  const flipDeckTranslateY = useTransform(flipDeckProgress, [0, 1], [0, 590]);
+  const flipDeckScale = useTransform(flipDeckProgress, [0, 1], [1, 0.86]);
+  const flipDeckOpacity = useTransform(flipDeckProgress, [0, 0.7], [1, 0.55]);
+
+  // Dark section: normal scroll speed — looks fast relative to barely-moving card 4
+  const darkFoldRef = useRef(null);
+  const { scrollYProgress: darkFoldProgress } = useScroll({
+    target: darkFoldRef,
+    offset: ['start end', 'start 30%'],
+  });
+  const darkRotateX = useTransform(darkFoldProgress, [0, 1], [10, 0]);
+  const darkScale = useTransform(darkFoldProgress, [0, 1], [0.96, 1]);
 
   // Hero image overlay — driven by PAGE scroll so animation starts immediately
   const heroImgRef = useRef(null);
   const { scrollY: pageScrollY } = useScroll();
   // Full animation spans 2400px: Images 2 & 3 each get 1200px of scroll room
   const heroImgScroll = useTransform(pageScrollY, [0, 2400], [0, 1]);
-  const quoteRevealProgress = useTransform(heroImgScroll, [0, 0.22], [0, 1]);
+  // Button press: stronger + longer shrink so it's visible, then quote fills in
+  const generateBtnScale = useTransform(heroImgScroll, [0, 0.035, 0.07], [1, 0.78, 1]);
+  const quoteRevealProgress = useTransform(heroImgScroll, [0.07, 0.257], [0, 1]);
 
   // Phase 1a (0 → 0.25): Image 2 flows in from off-screen right.
   const img2SpacerWidth = useTransform(heroImgScroll, [0, 0.25], ['28vw', '0vw']);
   const img2FadeIn = useTransform(heroImgScroll, [0, 0.075], [0, 1]);
+  // Learning card reveal: starts as Image 2 becomes visible, ends as Text 2 finishes typing.
+  const learningReveal = useTransform(heroImgScroll, [0.05, 0.5], [0, 1]);
 
   // Phase 2a (0.25 → 0.41): Text 1 squishes, strip shifts left to center Image 2.
   const stripX = useTransform(heroImgScroll, [0.25, 0.41], ['0%', '-55%']);
@@ -720,13 +639,6 @@ export default function LandingPage() {
     ([x1, x2]) => `calc(${x1 as string} + ${x2 as string})`,
   );
 
-  // Showcase scroll — fade feature cards as showcase rises
-  const { scrollYProgress: showcaseScroll } = useScroll({
-    target: showcaseRef,
-    offset: ['start end', 'start 0.2'],
-  });
-  const featureFadeOpacity = useTransform(showcaseScroll, [0, 1], [1, 0]);
-  const featureFadeScale = useTransform(showcaseScroll, [0, 1], [1, 0.95]);
 
   return (
     <div className="min-h-screen bg-white text-foreground" style={{ overflowX: 'clip' }}>
@@ -835,7 +747,7 @@ export default function LandingPage() {
                 transition={{ duration: 0.8, delay: 0.8, ease: [0.25, 0.4, 0, 1] }}
                 className="w-[55%] flex-shrink-0"
               >
-                <QuoteSlot progress={quoteRevealProgress} />
+                <QuoteSlot progress={quoteRevealProgress} btnScale={generateBtnScale} />
               </motion.div>
 
               {/* Text 1 — gets squished as strip moves left.
@@ -873,9 +785,7 @@ export default function LandingPage() {
                 style={{ opacity: img2FadeIn }}
                 className="w-[55%] flex-shrink-0"
               >
-                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-300 shadow-lg flex items-center justify-center">
-                  <span className="text-sm text-stone-500 font-medium">Bild 2</span>
-                </div>
+                <LearningSlot progress={learningReveal} />
               </motion.div>
 
               {/* Text 2 — types in during phase 3a, squishes in phase 2b. */}
@@ -930,36 +840,20 @@ export default function LandingPage() {
         <div className="h-[2400px]" />
       </section>
 
-      {/* Stacking sections — feature cards pinned, showcase slides up over them */}
-      <div className="relative">
-        {/* Feature cards — sticky, stays pinned while showcase covers them */}
-        <motion.div
-          className="sticky top-16 z-0 origin-top"
-          style={{ opacity: featureFadeOpacity, scale: featureFadeScale }}
-        >
-          <section className="bg-white py-20 sm:py-24 overflow-hidden">
-            <div className="mx-auto max-w-6xl px-4 sm:px-6">
-              <FadeIn>
-                <div className="mx-auto max-w-2xl text-center">
-                  <h2 className="font-heading text-3xl font-bold text-foreground sm:text-4xl">
-                    Allt du behöver för dina offerter
-                  </h2>
-                  <p className="mt-4 text-lg text-muted-foreground">
-                    Från första förfrågan till godkänd offert — Quotly har dig täckt.
-                  </p>
-                </div>
-              </FadeIn>
-            </div>
-            <div ref={featureRef} className="mt-12">
-              <FeatureAccordion />
-            </div>
-          </section>
-        </motion.div>
+      {/* FlipDeck: card 4 barely moves as dark section rises over it */}
+      <motion.div
+        ref={flipDeckRef}
+        style={{ translateY: flipDeckTranslateY, scale: flipDeckScale, opacity: flipDeckOpacity }}
+      >
+        <FlipDeckSection />
+      </motion.div>
 
-        {/* Showcase — scrolls normally over the sticky feature cards */}
-        <section
+      <div ref={darkFoldRef} className="relative z-20" style={{ perspective: '1000px' }}>
+        {/* Showcase — normal scroll speed, covers nearly-stationary card 4 */}
+        <motion.section
           ref={showcaseRef}
-          className="relative z-10 rounded-t-[2.5rem] bg-gradient-to-b from-stone-900 to-stone-800 py-20 sm:py-28"
+          style={{ rotateX: darkRotateX, scale: darkScale, transformOrigin: 'top center' }}
+          className="relative rounded-t-[2.5rem] bg-gradient-to-b from-stone-900 to-stone-800 py-20 sm:py-28"
         >
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <FadeIn>
@@ -1006,7 +900,7 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-      </section>
+      </motion.section>
       </div>
 
       {/* How it works */}

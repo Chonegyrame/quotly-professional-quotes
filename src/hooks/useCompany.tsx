@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+export type CompanyRole = 'owner' | 'admin' | 'member';
+
 export interface Company {
   id: string;
   user_id: string;
@@ -23,15 +25,24 @@ export function useCompany() {
 
   const query = useQuery({
     queryKey: ['company', user?.id],
-    queryFn: async () => {
-      if (!user) return null;
+    queryFn: async (): Promise<{ company: Company | null; role: CompanyRole | null }> => {
+      if (!user) return { company: null, role: null };
+
       const { data, error } = await supabase
-        .from('companies')
-        .select('*')
+        .from('company_memberships')
+        .select('role, companies(*)')
         .eq('user_id', user.id)
-        .maybeSingle();
+        .limit(1);
+
       if (error) throw error;
-      return data as Company | null;
+
+      const first = data?.[0];
+      if (!first || !first.companies) return { company: null, role: null };
+
+      return {
+        company: first.companies as unknown as Company,
+        role: first.role as CompanyRole,
+      };
     },
     enabled: !!user,
   });
@@ -63,5 +74,11 @@ export function useCompany() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['company'] }),
   });
 
-  return { company: query.data, isLoading: query.isLoading, createCompany, updateCompany };
+  return {
+    company: query.data?.company ?? null,
+    role: query.data?.role ?? null,
+    isLoading: query.isLoading,
+    createCompany,
+    updateCompany,
+  };
 }
