@@ -24,6 +24,8 @@ import AcceptInvite from "./pages/AcceptInvite";
 import LandingPage from "./pages/LandingPage";
 import FeatureDetail from "./pages/FeatureDetail";
 import IncomingRequestForm from "./pages/IncomingRequestForm";
+import Inbox from "./pages/Inbox";
+import IncomingRequestDetail from "./pages/IncomingRequestDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -99,6 +101,8 @@ function AppRoutes() {
         <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
         <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
+        <Route path="/inbox/:id" element={<ProtectedRoute><IncomingRequestDetail /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       </AnimatePresence>

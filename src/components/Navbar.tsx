@@ -1,11 +1,12 @@
 ﻿import { Link, useLocation } from 'react-router-dom';
-import { FileText, LayoutDashboard, Settings, Plus, BarChart3, BookTemplate, Package, LogOut } from 'lucide-react';
+import { FileText, LayoutDashboard, Settings, Plus, BarChart3, BookTemplate, Package, LogOut, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/inbox', icon: Inbox, label: 'Förfrågningar' },
   { to: '/analytics', icon: BarChart3, label: 'Analys' },
   { to: '/templates', icon: BookTemplate, label: 'Mallar' },
   { to: '/materials', icon: Package, label: 'Material' },
