@@ -144,8 +144,35 @@ Deno.serve(async (req: Request) => {
     function_name: FUNCTION_NAME,
   });
 
-  // Phase 3 hook — fire-and-forget scoring call goes here once implemented.
-  // Left as a comment for now; the row is persisted with ai_verdict=null.
+  // Fire-and-forget: call score-incoming-request in the background.
+  // EdgeRuntime.waitUntil keeps the function alive until the scoring
+  // call resolves (up to the function's max duration), so the customer
+  // sees "Tack!" immediately while scoring finishes server-side.
+  const requestId = (inserted as { id: string }).id;
+  const scoreUrl = `${url}/functions/v1/score-incoming-request`;
+  const scorePromise = fetch(scoreUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ requestId }),
+  })
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.text().catch(() => "");
+        console.error(`[${FUNCTION_NAME}] score-call-${r.status}: ${body.slice(0, 300)}`);
+      }
+    })
+    .catch((e) => {
+      console.error(`[${FUNCTION_NAME}] score-call-error: ${(e as Error).message}`);
+    });
 
-  return jsonResponse({ id: (inserted as { id: string }).id }, 200);
+  // @ts-expect-error — EdgeRuntime is a Supabase/Deno Deploy global.
+  if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+    // @ts-expect-error
+    EdgeRuntime.waitUntil(scorePromise);
+  }
+
+  return jsonResponse({ id: requestId }, 200);
 });

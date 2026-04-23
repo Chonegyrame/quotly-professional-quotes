@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.create-intake-upload-url]
 verify_jwt = false
+
+[functions.score-incoming-request]
+verify_jwt = false
