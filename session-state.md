@@ -1,81 +1,58 @@
 # Session State
 
-Last updated: 2026-04-23 (after Phase 0–3 commit + push)
-Branch: main — clean, everything committed and pushed
+Last updated: 2026-04-23 (after Phase 4 + Phase 5 build)
+Branch: main — uncommitted changes (Phases 4 + 5, not yet committed or pushed)
 
-**⚡ NEXT ACTION when opening a fresh session:** Read [.claude/plans/lead-filter-system.md](.claude/plans/lead-filter-system.md) and start **Phase 4 — Inbox UI**. Phases 0, 1, 2, and 3 are all complete, deployed to production Supabase, and committed + pushed as 4 separate commits. The backend loop (customer submits → row stored → AI scores → verdict saved) is fully working end-to-end. Phase 4 is where firms finally see these scored leads inside Quotly.
+**⚡ NEXT ACTION when opening a fresh session:** Phases 4 and 5 are built but not committed. Commit them as two separate commits (Phase 4 — Inbox UI, Phase 5 — Convert to quote), push to main, then move to Post-MVP work. See "What comes next" below.
 
 ## What was done this session
 
-Built Phases 0 through 3 of the lead-filter system end-to-end. All deployed live and committed as 4 phase-boundary commits.
-
-- **Phase 0 — Business profile foundation** (`7ef739c`): `companies.form_slug` + slug trigger (Swedish diacritic handling), `company_business_profile` table with RLS, interactive react-leaflet map for service-area picker (geocoded base + draggable radius) in `CompanySetup.tsx` and `BusinessProfileSection.tsx`.
-- **Phase 1 — Template library** (`d11c7d3`): `form_templates` + `company_form_templates` tables. Seeded all 16 templates (5 el + 5 bygg + 5 vvs + 1 generic) with Swedish form schemas + prose red_flag_rules.
-- **Phase 2 — Public intake form** (`b8b4b98`): `incoming_requests` table, `/offert/:firmSlug` route, `IncomingRequestForm.tsx` two-screen flow, dynamic `FormFieldRenderer.tsx`, 3 edge functions (`classify-intake-request`, `submit-intake-request`, `create-intake-upload-url`). Signed upload URLs harden photo uploads (no anon bucket INSERT, every upload passes IP-rate-limited edge function).
-- **Phase 3 — AI scoring engine** (`12e880a`): `score-incoming-request` edge function. Sonnet 4.6 with forced tool-use (`score_lead` schema), reasoning-before-score, two-breakpoint prompt caching (rubric + firm profile). Server-side guardrails: evidence substring verification, arithmetic check, tier consistency, confidence cap at Ljummet when låg, auto-raise `needs_human_review` when guards correct anything. Scoring fires async from submit-intake-request via `EdgeRuntime.waitUntil`.
-
-Verified end-to-end in browser + DB: test lead scored 91/Hett/hög with 7 green flags and 1 evidence-verified red flag.
+- **Phase 4 — Inbox UI**: Built `src/pages/Inbox.tsx`, `src/pages/IncomingRequestDetail.tsx`, `src/components/IncomingRequestCard.tsx`, `src/components/ScoreRing.tsx`, `src/components/FlagsList.tsx`, `src/hooks/useIncomingRequests.tsx`. Added `/inbox` and `/inbox/:id` routes to `App.tsx`. Added "Förfrågningar" nav item to `Navbar.tsx`. Inbox uses Dashboard-style Card-based filter grid (Alla / Hett / Ljummet / Kallt / Obesvarade).
+- **Phase 5 — Convert to quote**: Added `useGenerateQuoteFromRequest` hook to `useIncomingRequests.tsx` — calls `generate-quote` edge function with flattened form answers as text, navigates to QuoteBuilder with full `aiData` including generated line items. Added `convertRequest` mutation. Patched `QuoteBuilder.tsx` to pre-fill phone/email from `aiData` and mark the request as `converted` (with `converted_to_quote_id`) on save. Added "Från förfrågan" card to `QuoteDetail.tsx` via a React Query lookup on `incoming_requests.converted_to_quote_id`.
+- **Verified in browser**: Inbox renders live data (Anna Andersson, score 91, Hett, flags, summary). Layout matches Dashboard style.
 
 ## Current state
 
-- Customer can visit `http://localhost:8081/offert/<firm-slug>` → describe their job → AI picks right template → fill form + upload photos via signed URLs → submit → "Tack!" within 500ms.
-- Scoring runs in background; ~5–8s later the row has `ai_score`, `ai_tier`, `ai_confidence`, `ai_verdict`.
-- Brunn boofing (`brunn-boofing-7d8746d9`) has a manually-inserted business profile (primary_trade=el, specialties=laddbox+solceller, base=Stockholm, radius=40km) for testing. **Inserted via raw SQL, not via Settings UI** — user should save their real profile via Settings at some point.
-- Test rows in production DB:
-  - `375fd966-...` — Phase 2 verification (no ai_verdict, scoring not yet wired at submission time)
-  - `92167e84-...` — Phase 3 live test, scored 91/Hett/hög end-to-end
+- Full lead-filter loop is working end-to-end: customer submits `/offert/<slug>` → AI scores → lead appears in `/inbox` → firm clicks "Generera offert" → `generate-quote` called with form data → QuoteBuilder pre-filled → firm saves → request marked `converted` → QuoteDetail shows "Från förfrågan" link back to inbox.
+- Test rows in production DB: `92167e84-...` scored 91/Hett/hög, `375fd966-...` unscored (Phase 2 test).
+- Dev server runs on port 8081 via `.claude/launch.json`.
 
 ## Uncommitted changes
 
-All changes committed. Branch clean. Remote in sync.
+All Phase 4 + Phase 5 work is uncommitted. Modified files:
+- `.claude/launch.json` (added `autoPort: false`)
+- `src/App.tsx` (added `/inbox`, `/inbox/:id` routes)
+- `src/components/Navbar.tsx` (added Förfrågningar nav item)
+- `src/pages/QuoteBuilder.tsx` (phone/email pre-fill + convert-on-save)
+- `src/pages/QuoteDetail.tsx` (Från förfrågan card)
 
-Recent commits on main:
-```
-12e880a feat(lead-filter): Phase 3 — AI scoring engine with forced tool-use + guardrails
-b8b4b98 feat(lead-filter): Phase 2 — public intake form + signed upload URLs
-d11c7d3 feat(lead-filter): Phase 1 — form template library + 16 seeded templates
-7ef739c feat(lead-filter): Phase 0 — business profile foundation + map-based service area
-0ddb4c0 chore: update session-state for fresh-session handoff  (previous session baseline)
-```
+Untracked new files:
+- `src/components/FlagsList.tsx`
+- `src/components/IncomingRequestCard.tsx`
+- `src/components/ScoreRing.tsx`
+- `src/hooks/useIncomingRequests.tsx`
+- `src/pages/Inbox.tsx`
+- `src/pages/IncomingRequestDetail.tsx`
 
 ## What comes next
 
-**Phase 4 — Inbox UI**. All backend plumbing is done; this phase is pure frontend.
-
-Files to build (per plan):
-- `src/pages/Inbox.tsx` — `/inbox` route
-- `src/pages/IncomingRequestDetail.tsx` — full-detail view
-- `src/components/IncomingRequestCard.tsx` — Clariq-style card (score ring, tier badge, parsed field chips, green/red flag columns, summary, "Generera offert" CTA)
-- `src/components/ScoreRing.tsx` — score visualization
-- `src/components/FlagsList.tsx` — reusable flag list
-- `src/hooks/useIncomingRequests.tsx` — React Query hook (mirrors `useQuotes.tsx` pattern, firm-scoped)
-- Update `src/components/Navbar.tsx` to add "Förfrågningar" nav item
-- Filter tabs: Alla / 🟢 Hett / 🟡 Ljummet / 🔴 Kallt / Obesvarade
-
-Plan has full spec — no new architectural decisions needed, just build.
+1. **Commit and push**: Two commits — `feat(lead-filter): Phase 4 — Inbox UI` and `feat(lead-filter): Phase 5 — Convert to quote`. Then push to main.
+2. **Post-MVP: Template editor UI in Settings** — user flagged this as most wanted V2. `company_form_templates` table + RLS already exists. New Settings section "Formulär" listing templates with enable/disable toggle and preview. Pure UI + mutation work, no new schema.
+3. **Post-MVP: Trade-specific homepage entry points** — marketing/SEO pages per trade (El, VVS, Bygg, Övrigt). Needs copy direction discussion before building.
 
 ## Open questions
 
-- **Per-template red_flag_rules not yet injected into scoring prompt.** Today the scoring AI sees template names + descriptions but NOT the per-template prose rules. The live test showed the AI caught technical issues (e.g. säkring/laddeffekt mismatch) from its own knowledge, so low priority. If scoring quality suffers on less common templates, wire `red_flag_rules` into the `firmBlock` of `score-incoming-request`.
-- **User asked for plainer "dumbed down" explanation style** — keep technical explanations in customer-facing plain terms, avoid jargon unless asked.
-- **Post-MVP reminder** queued in the plan file: when Phase 5 is done, surface the Post-MVP list (especially the **template-editor UI in Settings** — user's most-wanted V2).
+- **Per-template `red_flag_rules` not injected into scoring prompt** — today scoring AI reads template name/description but not the per-template prose rules. Low priority; live test showed AI catches issues from own knowledge. Wire in if scoring quality suffers.
+- **Post-MVP priority order** — template editor vs. homepage pages vs. learning system rewrite. User has not decided.
+- **Resend sandbox constraint still in place** — `onboarding@resend.dev` only delivers to Resend account owner. If email notifications on new leads are added later, this blocks delivery until domain is verified.
 
 ## Context that is easy to forget
 
-- **Prompt caching TTL is ~5 min.** Sparse lead volume = cache misses = full cost. Real cost impact only appears at real volume.
-- **Scoring uses Claude Sonnet 4.6** (`claude-sonnet-4-6`); classification uses **Haiku 4.5**.
-- **`EdgeRuntime.waitUntil`** pattern in `submit-intake-request` keeps the function alive for background scoring after the Response is returned. `@ts-expect-error` comments are intentional (runtime global not typed).
-- **Photo bucket INSERT is service-role only** — browser direct uploads will fail with "new row violates row-level security policy". All uploads must go through `create-intake-upload-url` → signed URL → `uploadToSignedUrl`.
-- **Nominatim rate limit: 1 req/sec, user-agent required.** Used for firm base-address (Phase 0 Settings) and customer address (Phase 2 submission) — both browser-direct, no API key.
-- **Slugify handles Swedish diacritics** (å→a, ä→a, ö→o, etc.) via `translate()` in `slugify_company_name`.
-- **`get_company_by_slug` is SECURITY DEFINER** — returns only safe fields (no email_template, no default_vat).
-- **Tier thresholds hard-coded** (75/45/0) in `score-incoming-request`. Move to config if we ever allow firms to customize.
-- **Rate limits share `ai_ip_usage` table** under different `function_name` values: classify 30/hr, submit 10/hr, upload-url 60/hr, score 30/hr IP + 500/day global ceiling.
-
----
-
-## Previous session (2026-04-23 planning session) carryover
-
-- Firm model complete (owner/admin/member memberships, RLS rewrite, team invites). Unchanged.
-- Backlog items still open: `/q/:id` anon accept/decline bug, wholesale catalog retrieval layer, firm material trade-tagging, customer's original request visible on quote, Fortnox Chunk C (waiting on partner), pre-launch cleanup (Resend domain, remove ai_prompt_text dev panel).
-- User's dev philosophy: build hard and fast, launch and test personally, don't wait months to validate.
+- `useGenerateQuoteFromRequest` uses `useCompanyBusinessProfile` to get `primary_trade` for the `generate-quote` call — if the firm has no business profile set, trade falls back to `'general'`.
+- `generate-quote` is rate-limited to 20/day per user — this limit also applies when triggered from the inbox flow (same edge function, same counter).
+- `QuoteBuilder` marks the request converted fire-and-forget (`.then()` without await) so it never blocks the save or navigation flow.
+- `incoming_requests` RLS: SELECT/UPDATE scoped to company members; writes only via service-role edge functions. The `convertRequest` mutation in `useIncomingRequests` does a direct `.update()` which works because authenticated company members have UPDATE rights.
+- Scoring uses Claude Sonnet 4.6; classification uses Haiku 4.5; quote generation uses Haiku via `generate-quote`.
+- Tier thresholds hard-coded in `score-incoming-request` (75/45/0). Not configurable per firm.
+- Photo uploads go through `create-intake-upload-url` → signed URL → `uploadToSignedUrl`. Direct browser INSERT to storage bucket fails RLS.
+- Slugify handles Swedish diacritics (å→a, ä→a, ö→o) via `translate()` in `slugify_company_name` DB trigger.

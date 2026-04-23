@@ -124,6 +124,8 @@ export default function QuoteBuilder() {
       // Store the raw AI response for later diffing
       setAiSuggestions(aiData);
       setCustomerName(aiData.customer_name || '');
+      setCustomerEmail(aiData.customer_email || '');
+      setCustomerTelefon(aiData.customer_phone || '');
       setCustomerAdress(aiData.customer_address || '');
       setNotes(aiData.notes || '');
       const mapped = (aiData.items || []).map((item: any, idx: number) => ({
@@ -289,6 +291,18 @@ export default function QuoteBuilder() {
         if (materialsToInsert.length > 0) {
           await supabase.from('quote_item_materials').insert(materialsToInsert);
         }
+      }
+
+      // Link back to incoming request if this quote was generated from one
+      const incomingRequestId = location.state?.incomingRequestId;
+      if (incomingRequestId) {
+        supabase
+          .from('incoming_requests')
+          .update({ status: 'converted', converted_to_quote_id: quoteId })
+          .eq('id', incomingRequestId)
+          .then(({ error }) => {
+            if (error) console.error('[incoming_request convert]', error);
+          });
       }
 
       // Fire-and-forget keyword extraction for manual quotes

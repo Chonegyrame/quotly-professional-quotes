@@ -1,5 +1,7 @@
 ﻿import { useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send, Loader2, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react';
 import { downloadQuotePdf } from '@/lib/downloadPdf';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,20 @@ export default function QuoteDetail() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [actualHoursInput, setActualHoursInput] = useState<number | ''>('');
+
+  const { data: linkedRequest } = useQuery({
+    queryKey: ['linked-request', id],
+    queryFn: async () => {
+      if (!id) return null;
+      const { data } = await supabase
+        .from('incoming_requests')
+        .select('id, submitter_name, ai_tier, ai_score, created_at')
+        .eq('converted_to_quote_id', id)
+        .maybeSingle();
+      return data ?? null;
+    },
+    enabled: !!id,
+  });
 
   const quote = useMemo(() => {
     const dbQ = dbQuotes.find((q: any) => q.id === id);
@@ -169,6 +185,24 @@ export default function QuoteDetail() {
         </div>
         <StatusBadge status={quote.status} />
       </div>
+
+      {linkedRequest && (
+        <Link to={`/inbox/${linkedRequest.id}`}>
+          <Card className="mb-4 border-muted bg-muted/30 hover:bg-muted/50 transition-colors no-print">
+            <CardContent className="p-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Från förfrågan</p>
+                <p className="text-sm font-medium">{linkedRequest.submitter_name ?? 'Okänd kund'}</p>
+              </div>
+              {linkedRequest.ai_tier && (
+                <span className="text-xs text-muted-foreground">
+                  {linkedRequest.ai_tier} · {linkedRequest.ai_score ?? '–'} p
+                </span>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {reminderDue && (
         <Card className="mb-4 border-warning/50 bg-warning/5 no-print">
