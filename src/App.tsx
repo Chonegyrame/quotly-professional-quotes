@@ -23,6 +23,7 @@ import CompanySetup from "./pages/CompanySetup";
 import AcceptInvite from "./pages/AcceptInvite";
 import LandingPage from "./pages/LandingPage";
 import FeatureDetail from "./pages/FeatureDetail";
+import IncomingRequestForm from "./pages/IncomingRequestForm";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,7 +62,7 @@ function HomeRoute() {
 function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user } = useAuth();
-  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features') || location.pathname.startsWith('/invite/');
+  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/');
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -85,6 +86,7 @@ function AppRoutes() {
         <Route path="/auth/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/q/:id" element={<CustomerView />} />
+        <Route path="/offert/:firmSlug" element={<IncomingRequestForm />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />
         <Route path="/setup" element={<ProtectedRoute><CompanySetup /></ProtectedRoute>} />
         <Route path="/" element={<HomeRoute />} />

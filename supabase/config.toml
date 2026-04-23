@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.accept-team-invite]
 verify_jwt = false
+
+[functions.classify-intake-request]
+verify_jwt = false
+
+[functions.submit-intake-request]
+verify_jwt = false
+
+[functions.create-intake-upload-url]
+verify_jwt = false
