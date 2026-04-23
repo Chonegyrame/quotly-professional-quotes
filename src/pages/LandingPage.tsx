@@ -1,10 +1,11 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FlipDeckSection } from '@/components/FlipDeck/FlipDeckSection';
 import { LearningSlot } from '@/components/LearningSlot';
 import {
   AnimatePresence,
   motion,
+  useMotionValue,
   useScroll,
   useTransform,
   useInView,
@@ -19,6 +20,7 @@ import {
   Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { TradeMenu } from '@/components/TradeMenu';
 import { showcaseItems, type ShowcaseItem } from '@/data/showcaseData';
 
 /* ------------------------------------------------------------------ */
@@ -383,7 +385,7 @@ function QuoteSlot({ progress, btnScale }: { progress: MotionValue<number>; btnS
 
   return (
     <div
-      className="relative w-full aspect-[4/3] rounded-2xl shadow-lg overflow-hidden"
+      className="relative h-full w-full rounded-2xl shadow-lg overflow-hidden"
       style={{
         backgroundColor: '#faf9f7',
         backgroundImage: 'radial-gradient(circle, rgba(100,116,139,0.18) 1px, transparent 1px)',
@@ -569,6 +571,12 @@ function QuoteSlot({ progress, btnScale }: { progress: MotionValue<number>; btnS
 
 export default function LandingPage() {
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  const [heroSlide, setHeroSlide] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setHeroSlide((s) => (s + 1) % 3), 4500);
+    return () => clearInterval(t);
+  }, []);
   const selectedItem = selectedFeature ? showcaseItems.find((s) => s.id === selectedFeature) : null;
 
   const showcaseRef = useRef(null);
@@ -592,52 +600,122 @@ export default function LandingPage() {
   const darkRotateX = useTransform(darkFoldProgress, [0, 1], [10, 0]);
   const darkScale = useTransform(darkFoldProgress, [0, 1], [0.96, 1]);
 
-  // Hero image overlay — driven by PAGE scroll so animation starts immediately
-  const heroImgRef = useRef(null);
-  const { scrollY: pageScrollY } = useScroll();
-  // Full animation spans 2400px: Images 2 & 3 each get 1200px of scroll room
-  const heroImgScroll = useTransform(pageScrollY, [0, 2400], [0, 1]);
-  // Button press: stronger + longer shrink so it's visible, then quote fills in
-  const generateBtnScale = useTransform(heroImgScroll, [0, 0.035, 0.07], [1, 0.78, 1]);
-  const quoteRevealProgress = useTransform(heroImgScroll, [0.07, 0.257], [0, 1]);
+  // ── "How it works" — natural-scroll zig-zag section ──
+  // Scroll tracking runs from "section top at viewport bottom" (p=0) to "section bottom at viewport top" (p=1).
+  //
+  // Phase map — everything fires early so each box finishes animating while still fully in view:
+  //   0.04 – 0.08 : Box 1 fades in
+  //   0.10 – 0.14 : "Generera offert" button press
+  //   0.12 – 0.24 : Box 1 (QuoteSlot) content types in
+  //   0.24 – 0.32 : Bar 1 fills with orange
+  //   0.32 – 0.34 : Box 2 fades in
+  //   0.34 – 0.44 : Box 2 (LearningSlot) content fills in
+  //   0.44 – 0.52 : Bar 2 fills with orange
+  //   0.52 – 0.54 : Box 3 fades in
+  //   0.54 – 1.00 : Box 3 content (placeholder for now)
+  const heroImgRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const box1Ref = useRef<HTMLDivElement>(null);
+  const box2Ref = useRef<HTMLDivElement>(null);
+  const box3Ref = useRef<HTMLDivElement>(null);
+  const fill1Ref = useRef<SVGPathElement>(null);
+  const fill2Ref = useRef<SVGPathElement>(null);
+  const pathLensRef = useRef({ p1: 0, p2: 0 });
 
-  // Phase 1a (0 → 0.25): Image 2 flows in from off-screen right.
-  const img2SpacerWidth = useTransform(heroImgScroll, [0, 0.25], ['28vw', '0vw']);
-  const img2FadeIn = useTransform(heroImgScroll, [0, 0.075], [0, 1]);
-  // Learning card reveal: starts as Image 2 becomes visible, ends as Text 2 finishes typing.
-  const learningReveal = useTransform(heroImgScroll, [0.05, 0.5], [0, 1]);
+  const sectionProgress = useMotionValue(0);
 
-  // Phase 2a (0.25 → 0.41): Text 1 squishes, strip shifts left to center Image 2.
-  const stripX = useTransform(heroImgScroll, [0.25, 0.41], ['0%', '-55%']);
-  const text1Width = useTransform(heroImgScroll, [0.25, 0.35], ['350px', '0px']);
-  const text1ScaleX = useTransform(heroImgScroll, [0.25, 0.34], [1, 0.15]);
-  const text1ScaleY = useTransform(heroImgScroll, [0.25, 0.29, 0.34], [1, 1.14, 1.05]);
-  const text1FadeOpacity = useTransform(heroImgScroll, [0.31, 0.35], [1, 0]);
+  // Derived motion values (for QuoteSlot, LearningSlot, and box fade)
+  const generateBtnScale = useTransform(sectionProgress, [0.10, 0.12, 0.14], [1, 0.78, 1]);
+  const quoteRevealProgress = useTransform(sectionProgress, [0.12, 0.24], [0, 1]);
+  const learningReveal = useTransform(sectionProgress, [0.34, 0.44], [0, 1]);
+  // Box 1: quick fade in as it enters the viewport from below
+  const box1Opacity = useTransform(sectionProgress, [0.04, 0.08], [0, 1]);
+  // Boxes 2/3: completely invisible until their bar arrives, then quick fade in
+  const box2Opacity = useTransform(sectionProgress, [0.32, 0.34], [0, 1]);
+  const box3Opacity = useTransform(sectionProgress, [0.52, 0.54], [0, 1]);
 
-  // Phase 3a (0.35 → 0.5): Text 2 types in.
-  const text2TitleProgress = useTransform(heroImgScroll, [0.35, 0.425], [0, 1]);
-  const text2SubProgress = useTransform(heroImgScroll, [0.425, 0.5], [0, 1]);
+  // Layout: build SVG paths + imperatively drive bar stroke-dashoffset from scroll
+  useLayoutEffect(() => {
+    const clamp = (x: number) => Math.max(0, Math.min(1, x));
+    const seg = (v: number, a: number, b: number) => clamp((v - a) / (b - a));
 
-  // Phase 1b (0.5 → 0.75): Image 3 flows in — mirror of Image 2's phase 1a.
-  const img3SpacerWidth = useTransform(heroImgScroll, [0.5, 0.75], ['28vw', '0vw']);
-  const img3FadeIn = useTransform(heroImgScroll, [0.5, 0.575], [0, 1]);
+    const applyBars = (p: number) => {
+      const { p1, p2 } = pathLensRef.current;
+      const f1 = fill1Ref.current;
+      const f2 = fill2Ref.current;
+      if (f1 && p1) {
+        const t = seg(p, 0.24, 0.32);
+        f1.style.strokeDasharray = `${p1} ${p1}`;
+        f1.style.strokeDashoffset = `${p1 * (1 - t)}`;
+      }
+      if (f2 && p2) {
+        const t = seg(p, 0.44, 0.52);
+        f2.style.strokeDasharray = `${p2} ${p2}`;
+        f2.style.strokeDashoffset = `${p2 * (1 - t)}`;
+      }
+    };
 
-  // Phase 2b (0.75 → 0.91): Text 2 squishes, strip shifts left again to center Image 3.
-  const stripX2 = useTransform(heroImgScroll, [0.75, 0.91], ['0%', '-55%']);
-  const text2Width = useTransform(heroImgScroll, [0.75, 0.85], ['350px', '0px']);
-  const text2ScaleX = useTransform(heroImgScroll, [0.75, 0.84], [1, 0.15]);
-  const text2ScaleY = useTransform(heroImgScroll, [0.75, 0.79, 0.84], [1, 1.14, 1.05]);
-  const text2FadeOpacity = useTransform(heroImgScroll, [0.81, 0.85], [1, 0]);
+    const rebuild = () => {
+      const stage = stageRef.current;
+      const b1 = box1Ref.current, b2 = box2Ref.current, b3 = box3Ref.current;
+      const f1 = fill1Ref.current, f2 = fill2Ref.current;
+      if (!stage || !b1 || !b2 || !b3 || !f1 || !f2) return;
+      const sr = stage.getBoundingClientRect();
+      const svg = f1.ownerSVGElement;
+      if (svg) svg.setAttribute('viewBox', `0 0 ${sr.width} ${sr.height}`);
+      const anchors = (el: HTMLDivElement) => {
+        const r = el.getBoundingClientRect();
+        return {
+          topMid: { x: r.left + r.width / 2 - sr.left, y: r.top - sr.top },
+          bottomMid: { x: r.left + r.width / 2 - sr.left, y: r.bottom - sr.top },
+        };
+      };
+      const a1 = anchors(b1), a2 = anchors(b2), a3 = anchors(b3);
+      const elbow1 = a1.bottomMid.y + (a2.topMid.y - a1.bottomMid.y) * 0.55;
+      const elbow2 = a2.bottomMid.y + (a3.topMid.y - a2.bottomMid.y) * 0.55;
+      const d1 = `M ${a1.bottomMid.x} ${a1.bottomMid.y} L ${a1.bottomMid.x} ${elbow1} L ${a2.topMid.x} ${elbow1} L ${a2.topMid.x} ${a2.topMid.y}`;
+      const d2 = `M ${a2.bottomMid.x} ${a2.bottomMid.y} L ${a2.bottomMid.x} ${elbow2} L ${a3.topMid.x} ${elbow2} L ${a3.topMid.x} ${a3.topMid.y}`;
+      f1.setAttribute('d', d1);
+      f2.setAttribute('d', d2);
+      pathLensRef.current.p1 = f1.getTotalLength();
+      pathLensRef.current.p2 = f2.getTotalLength();
+      applyBars(sectionProgress.get());
+    };
 
-  // Phase 3b (0.85 → 1.0): Text 3 types in.
-  const text3TitleProgress = useTransform(heroImgScroll, [0.85, 0.925], [0, 1]);
-  const text3SubProgress = useTransform(heroImgScroll, [0.925, 1.0], [0, 1]);
+    let pending = false;
+    const onScroll = () => {
+      if (pending) return;
+      pending = true;
+      // Use microtask to coalesce multiple scroll events within the same frame
+      Promise.resolve().then(() => {
+        pending = false;
+        const el = heroImgRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const vh = window.innerHeight;
+        // Track from "section top at viewport bottom" (p=0, section just entering)
+        // to "section bottom at viewport top" (p=1, section just exiting).
+        const travel = r.height + vh;
+        const p = clamp((vh - r.top) / travel);
+        sectionProgress.set(p);
+        applyBars(p);
+      });
+    };
+    const onResize = () => { rebuild(); onScroll(); };
 
-  // Combined strip X: accumulates both left-shifts.
-  const combinedStripX = useTransform(
-    [stripX, stripX2],
-    ([x1, x2]) => `calc(${x1 as string} + ${x2 as string})`,
-  );
+    rebuild();
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(rebuild);
+    if (stageRef.current) ro.observe(stageRef.current);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [sectionProgress]);
 
 
   return (
@@ -672,172 +750,200 @@ export default function LandingPage() {
                 </Button>
               </motion.div>
             </Link>
+            <TradeMenu />
           </div>
         </div>
       </motion.header>
 
-      {/* Hero — text + image strip all pinned together, scrolling drives animation */}
-      <section ref={heroImgRef} className="relative">
-        <div className="sticky top-16 z-10 flex min-h-[calc(100vh-4rem)] flex-col items-stretch bg-gradient-to-b from-stone-50 to-white">
-          <div aria-hidden className="dot-grid pointer-events-none absolute inset-0 -z-20" />
-          <motion.div
-            className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[600px] w-[800px] -transtone-x-1/2 rounded-full bg-accent/10 blur-3xl"
-            animate={{ scale: [1, 1.05, 1], opacity: [0.5, 0.7, 0.5] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          />
-
-          {/* Hero text */}
-          <div className="relative mx-auto w-full max-w-6xl px-4 pt-8 pb-4 sm:px-6 sm:pt-12">
-            <div className="mx-auto max-w-3xl text-center">
-              <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.4, 0, 1] }}
-                className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-4 py-1.5 text-sm font-medium text-accent"
-              >
-                <Sparkles className="h-4 w-4" />
-                Nu med AI-genererade offerter
-              </motion.div>
-
-              <motion.h1
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.2, ease: [0.25, 0.4, 0, 1] }}
-                className="font-heading text-3xl font-bold leading-tight text-foreground sm:text-4xl lg:text-5xl"
-              >
-                Professionella offerter på minuter,{' '}
-                <span className="text-accent">inte timmar.</span>
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.4, ease: [0.25, 0.4, 0, 1] }}
-                className="mt-4 text-base text-muted-foreground sm:text-lg"
-              >
-                Quotly hjälper hantverkare att skapa, skicka och följa upp offerter — snabbt, snyggt och utan krångel.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.6, ease: [0.25, 0.4, 0, 1] }}
-                className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
-              >
-                <Link to="/auth?signup=true">
-                  <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
-                    <Button size="lg" className="gap-2 bg-accent text-white hover:bg-accent/90 px-8 text-base shadow-lg shadow-accent/25">
-                      Skapa ditt konto
-                      <ArrowRight className="h-5 w-5" />
-                    </Button>
-                  </motion.div>
-                </Link>
-                <p className="text-sm text-muted-foreground">Gratis att komma igång. Ingen kortuppgift.</p>
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Image strip */}
-          <div className="relative mx-auto w-full max-w-6xl px-4 pb-12 sm:px-6">
-            <motion.div style={{ x: combinedStripX }} className="flex items-center gap-6">
-              {/* Image 1 — always visible initially */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.8, ease: [0.25, 0.4, 0, 1] }}
-                className="w-[55%] flex-shrink-0"
-              >
-                <QuoteSlot progress={quoteRevealProgress} btnScale={generateBtnScale} />
-              </motion.div>
-
-              {/* Text 1 — gets squished as strip moves left.
-                  Outer collapses width (layout). Inner scales glyphs (visual squish). */}
-              <motion.div
-                style={{ width: text1Width, opacity: text1FadeOpacity }}
-                className="flex-shrink-0 overflow-hidden"
-              >
-                <motion.div
-                  style={{
-                    scaleX: text1ScaleX,
-                    scaleY: text1ScaleY,
-                    transformOrigin: 'left center',
-                  }}
-                  className="min-w-[250px] sm:min-w-[350px]"
-                >
-                  <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
-                    Skapa offerter snabbare
-                  </h2>
-                  <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-                    Beskriv jobbet — Quotly bygger en komplett offert med arbete och material.
-                  </p>
-                </motion.div>
-              </motion.div>
-
-              {/* Spacer — shrinks as user scrolls, pulling Image 2 toward Text 1 through flex layout. */}
-              <motion.div
-                aria-hidden
-                style={{ width: img2SpacerWidth }}
-                className="flex-shrink-0"
-              />
-
-              {/* Image 2 — natural flex position. No translate; it moves purely because the spacer shrinks. */}
-              <motion.div
-                style={{ opacity: img2FadeIn }}
-                className="w-[55%] flex-shrink-0"
-              >
-                <LearningSlot progress={learningReveal} />
-              </motion.div>
-
-              {/* Text 2 — types in during phase 3a, squishes in phase 2b. */}
-              <motion.div
-                style={{ width: text2Width, opacity: text2FadeOpacity }}
-                className="flex-shrink-0 overflow-hidden"
-              >
-                <motion.div
-                  style={{ scaleX: text2ScaleX, scaleY: text2ScaleY, transformOrigin: 'left center' }}
-                  className="min-w-[250px] sm:min-w-[350px]"
-                >
-                  <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
-                    <ScrollTypeWriter text="Byggd för hantverkare" progress={text2TitleProgress} />
-                  </h2>
-                  <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-                    <ScrollTypeWriter
-                      text="Oavsett om du jobbar med el, VVS eller bygg — Quotly anpassar sig efter ditt yrke."
-                      progress={text2SubProgress}
-                    />
-                  </p>
-                </motion.div>
-              </motion.div>
-
-              {/* Spacer — shrinks to pull Image 3 in. */}
-              <motion.div aria-hidden style={{ width: img3SpacerWidth }} className="flex-shrink-0" />
-
-              {/* Image 3 — slides in from off-screen right via spacer collapse. */}
-              <motion.div style={{ opacity: img3FadeIn }} className="w-[55%] flex-shrink-0">
-                <div className="aspect-[4/3] w-full rounded-2xl bg-stone-400 shadow-lg flex items-center justify-center">
-                  <span className="text-sm text-stone-600 font-medium">Bild 3</span>
+      {/* ── Split Hero ── */}
+      <section className="relative h-[calc(100vh-4rem)] overflow-hidden">
+        {/* Image carousel — fills the full section behind the grey panel */}
+        <div className="absolute inset-0">
+          <AnimatePresence mode="sync">
+            <motion.div
+              key={heroSlide}
+              className="absolute inset-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.9, ease: 'easeInOut' }}
+            >
+              {heroSlide === 0 && (
+                <div className="absolute inset-0 flex items-center justify-end bg-stone-600 pr-12">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-2">Byt ut mot riktig bild</p>
+                    <p className="text-2xl font-bold text-white">Elektriker</p>
+                  </div>
                 </div>
-              </motion.div>
+              )}
+              {heroSlide === 1 && (
+                <div className="absolute inset-0 flex items-center justify-end bg-stone-500 pr-12">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-300 mb-2">Byt ut mot riktig bild</p>
+                    <p className="text-2xl font-bold text-white">VVS-tekniker</p>
+                  </div>
+                </div>
+              )}
+              {heroSlide === 2 && (
+                <div className="absolute inset-0 flex items-center justify-end bg-stone-400 pr-12">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-200 mb-2">Byt ut mot riktig bild</p>
+                    <p className="text-2xl font-bold text-white">Byggare</p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
-              {/* Text 3 — types out sequentially */}
-              <div className="min-w-[250px] sm:min-w-[350px] flex-shrink-0">
-                <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
-                  <ScrollTypeWriter text="Följ upp i realtid" progress={text3TitleProgress} />
-                </h2>
-                <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-                  <ScrollTypeWriter
-                    text="Se när kunden öppnar offerten och svara snabbt när läget är rätt."
-                    progress={text3SubProgress}
-                  />
-                </p>
-              </div>
+        {/* Stone-grey parallelogram — diagonal right edge via clip-path */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(100deg, #1c1917 0%, #1c1917 32%, rgba(28,25,23,0.88) 44%, rgba(28,25,23,0.55) 56%, rgba(28,25,23,0.15) 68%, transparent 78%)',
+          }}
+        />
 
+        {/* Text content — sits above both layers, constrained to the grey area */}
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-[50%] px-10 sm:px-14 lg:px-20">
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.4, 0, 1] }}
+              className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm font-medium text-accent"
+            >
+              <Sparkles className="h-4 w-4" />
+              Nu med AI-genererade offerter
+            </motion.div>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2, ease: [0.25, 0.4, 0, 1] }}
+              className="font-heading text-3xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl"
+            >
+              Professionella offerter på minuter,{' '}
+              <span className="text-accent">inte timmar.</span>
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.4, ease: [0.25, 0.4, 0, 1] }}
+              className="mt-4 text-base text-stone-300 sm:text-lg"
+            >
+              Quotly hjälper hantverkare att skapa, skicka och följa upp offerter — snabbt, snyggt och utan krångel.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.6, ease: [0.25, 0.4, 0, 1] }}
+              className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
+            >
+              <Link to="/auth?signup=true">
+                <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
+                  <Button size="lg" className="gap-2 bg-accent text-white hover:bg-accent/90 px-8 text-base shadow-lg shadow-accent/30">
+                    Skapa ditt konto
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </motion.div>
+              </Link>
+              <p className="text-sm text-stone-400">Gratis att komma igång. Ingen kortuppgift.</p>
             </motion.div>
           </div>
         </div>
 
-        {/* Scroll spacer — provides room for sticky to pin through the full 2400px animation */}
-        <div className="h-[2400px]" />
+        {/* Slide indicator dots */}
+        <div className="absolute bottom-6 right-6 flex gap-2">
+          {[0, 1, 2].map((i) => (
+            <button
+              key={i}
+              onClick={() => setHeroSlide(i)}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                i === heroSlide ? 'w-6 bg-white' : 'w-2 bg-white/40'
+              }`}
+              aria-label={`Bild ${i + 1}`}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── "How it works" — natural-scroll zig-zag with SVG bars between boxes ── */}
+      <section
+        ref={heroImgRef}
+        className="relative bg-gradient-to-b from-stone-50 to-white pt-32 pb-20 sm:pt-40 sm:pb-24"
+      >
+        <div className="mx-auto w-[min(1280px,92vw)]">
+          <div ref={stageRef} className="relative">
+            {/* SVG bars — rendered beneath the boxes */}
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              preserveAspectRatio="none"
+              style={{ zIndex: 1 }}
+            >
+              <path
+                ref={fill1Ref}
+                fill="none"
+                stroke="#c85a1f"
+                strokeWidth={14}
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+              />
+              <path
+                ref={fill2Ref}
+                fill="none"
+                stroke="#c85a1f"
+                strokeWidth={14}
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+              />
+            </svg>
+
+            <div className="flex flex-col gap-20 sm:gap-24">
+              {/* Row 1 — Box 1 left, text slot right */}
+              <div className="flex items-center justify-between">
+                <motion.div
+                  ref={box1Ref}
+                  style={{ opacity: box1Opacity, zIndex: 2 }}
+                  className="relative aspect-[4/3] w-[55%]"
+                >
+                  <QuoteSlot progress={quoteRevealProgress} btnScale={generateBtnScale} />
+                </motion.div>
+                <div className="w-[42%]" aria-hidden />
+              </div>
+
+              {/* Row 2 — text slot left, Box 2 right */}
+              <div className="flex items-center justify-between">
+                <div className="w-[42%]" aria-hidden />
+                <motion.div
+                  ref={box2Ref}
+                  style={{ opacity: box2Opacity, zIndex: 2 }}
+                  className="relative aspect-[4/3] w-[55%]"
+                >
+                  <LearningSlot progress={learningReveal} />
+                </motion.div>
+              </div>
+
+              {/* Row 3 — Box 3 placeholder left, text slot right */}
+              <div className="flex items-center justify-between">
+                <motion.div
+                  ref={box3Ref}
+                  style={{ opacity: box3Opacity, zIndex: 2 }}
+                  className="relative aspect-[4/3] w-[55%]"
+                >
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border border-stone-300 bg-stone-100 shadow-md">
+                    <span className="text-xs font-semibold uppercase tracking-widest text-stone-400">Steg 03</span>
+                    <span className="text-sm font-medium text-stone-600">Skicka & följ upp</span>
+                  </div>
+                </motion.div>
+                <div className="w-[42%]" aria-hidden />
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* FlipDeck: card 4 barely moves as dark section rises over it */}

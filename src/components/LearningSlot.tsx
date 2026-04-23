@@ -139,7 +139,7 @@ export function LearningSlot({ progress }: { progress: MotionValue<number> }) {
 
   return (
     <div
-      className="relative w-full aspect-[4/3] rounded-2xl shadow-lg overflow-hidden"
+      className="relative h-full w-full rounded-2xl shadow-lg overflow-hidden"
       style={{
         backgroundColor: '#faf9f7',
         backgroundImage:

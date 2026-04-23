@@ -23,6 +23,7 @@ import CompanySetup from "./pages/CompanySetup";
 import AcceptInvite from "./pages/AcceptInvite";
 import LandingPage from "./pages/LandingPage";
 import FeatureDetail from "./pages/FeatureDetail";
+import TradePage from "./pages/TradePage";
 import IncomingRequestForm from "./pages/IncomingRequestForm";
 import Inbox from "./pages/Inbox";
 import IncomingRequestDetail from "./pages/IncomingRequestDetail";
@@ -64,7 +65,8 @@ function HomeRoute() {
 function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user } = useAuth();
-  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/');
+  const tradeRoutes = ['/bygg', '/vvs', '/el', '/ovrigt'];
+  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/') || tradeRoutes.includes(location.pathname);
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -93,6 +95,10 @@ function AppRoutes() {
         <Route path="/setup" element={<ProtectedRoute><CompanySetup /></ProtectedRoute>} />
         <Route path="/" element={<HomeRoute />} />
         <Route path="/features/:id" element={<FeatureDetail />} />
+        <Route path="/bygg" element={<TradePage />} />
+        <Route path="/vvs" element={<TradePage />} />
+        <Route path="/el" element={<TradePage />} />
+        <Route path="/ovrigt" element={<TradePage />} />
         <Route path="/quotes/new" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
         <Route path="/quotes/:id" element={<ProtectedRoute><QuoteDetail /></ProtectedRoute>} />
         <Route path="/quotes/:id/edit" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
