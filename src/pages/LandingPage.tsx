@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FlipDeckSection } from '@/components/FlipDeck/FlipDeckSection';
+import { LeadBox } from '@/components/LeadBox';
 import { LearningSlot } from '@/components/LearningSlot';
 import {
   AnimatePresence,
@@ -600,122 +601,251 @@ export default function LandingPage() {
   const darkRotateX = useTransform(darkFoldProgress, [0, 1], [10, 0]);
   const darkScale = useTransform(darkFoldProgress, [0, 1], [0.96, 1]);
 
-  // ── "How it works" — natural-scroll zig-zag section ──
-  // Scroll tracking runs from "section top at viewport bottom" (p=0) to "section bottom at viewport top" (p=1).
+  // ── "How it works" — sticky-pin / translated-stack zig-zag ──
   //
-  // Phase map — everything fires early so each box finishes animating while still fully in view:
-  //   0.04 – 0.08 : Box 1 fades in
-  //   0.10 – 0.14 : "Generera offert" button press
-  //   0.12 – 0.24 : Box 1 (QuoteSlot) content types in
-  //   0.24 – 0.32 : Bar 1 fills with orange
-  //   0.32 – 0.34 : Box 2 fades in
-  //   0.34 – 0.44 : Box 2 (LearningSlot) content fills in
-  //   0.44 – 0.52 : Bar 2 fills with orange
-  //   0.52 – 0.54 : Box 3 fades in
-  //   0.54 – 1.00 : Box 3 content (placeholder for now)
-  const heroImgRef = useRef<HTMLElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  // One sticky pin holds the whole stage in the viewport. Inside the pin a
+  // "stack" div contains all 3 boxes + the SVG bars. The stack is moved via
+  // translate3d driven by scroll progress. Box positions never change relative
+  // to each other, so SVG paths are computed ONCE at layout (not per scroll).
+  // Only stack.transform and stroke-dashoffset change per scroll — both are
+  // single CSS properties the compositor handles cleanly, so no wobble.
+  //
+  // Phases (cumulative scroll-px, computed dynamically from box geometry):
+  //   ENTER     — stack rises until Box 1 hits the freeze line
+  //   FREEZE 1  — stack held; Bar 1 fills
+  //   BETWEEN   — stack rises until Box 2 hits the freeze line
+  //   FREEZE 2  — stack held; Bar 2 fills
+  //   APPROACH3 — stack rises until Box 3 hits the freeze line
+  //   FREEZE 3  — stack held; Box 3 content reveals
+  //   LEAVE     — stack rises off-screen
+  const driverRef = useRef<HTMLDivElement>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const box1Ref = useRef<HTMLDivElement>(null);
   const box2Ref = useRef<HTMLDivElement>(null);
   const box3Ref = useRef<HTMLDivElement>(null);
   const fill1Ref = useRef<SVGPathElement>(null);
   const fill2Ref = useRef<SVGPathElement>(null);
-  const pathLensRef = useRef({ p1: 0, p2: 0 });
 
-  const sectionProgress = useMotionValue(0);
+  const leadBoxReveal = useMotionValue(0);
+  const quoteRevealProgress = useMotionValue(0);
+  const learningReveal = useMotionValue(0);
+  const generateBtnScale = useMotionValue(1);
 
-  // Derived motion values (for QuoteSlot, LearningSlot, and box fade)
-  const generateBtnScale = useTransform(sectionProgress, [0.10, 0.12, 0.14], [1, 0.78, 1]);
-  const quoteRevealProgress = useTransform(sectionProgress, [0.12, 0.24], [0, 1]);
-  const learningReveal = useTransform(sectionProgress, [0.34, 0.44], [0, 1]);
-  // Box 1: quick fade in as it enters the viewport from below
-  const box1Opacity = useTransform(sectionProgress, [0.04, 0.08], [0, 1]);
-  // Boxes 2/3: completely invisible until their bar arrives, then quick fade in
-  const box2Opacity = useTransform(sectionProgress, [0.32, 0.34], [0, 1]);
-  const box3Opacity = useTransform(sectionProgress, [0.52, 0.54], [0, 1]);
-
-  // Layout: build SVG paths + imperatively drive bar stroke-dashoffset from scroll
   useLayoutEffect(() => {
-    const clamp = (x: number) => Math.max(0, Math.min(1, x));
-    const seg = (v: number, a: number, b: number) => clamp((v - a) / (b - a));
+    const driver = driverRef.current;
+    const stack = stackRef.current;
+    const svg = svgRef.current;
+    const f1 = fill1Ref.current;
+    const f2 = fill2Ref.current;
+    const b1 = box1Ref.current, b2 = box2Ref.current, b3 = box3Ref.current;
+    if (!driver || !stack || !svg || !f1 || !f2 || !b1 || !b2 || !b3) return;
 
-    const applyBars = (p: number) => {
-      const { p1, p2 } = pathLensRef.current;
-      const f1 = fill1Ref.current;
-      const f2 = fill2Ref.current;
-      if (f1 && p1) {
-        const t = seg(p, 0.24, 0.32);
-        f1.style.strokeDasharray = `${p1} ${p1}`;
-        f1.style.strokeDashoffset = `${p1 * (1 - t)}`;
+    // Tunables — match the demo file (scroll-line-demo-fixed.html)
+    const FREEZE_Y_FRAC = 0.18;     // box lands at 18% from top of viewport
+    const FREEZE_PX = 497;          // scroll-px to draw drop1+horizontal of bar
+    const ENTER_PX = 200;           // scroll-px for Box 1 to settle at freeze line
+    const FREEZE3_PX = 1400;        // scroll-px Box 3 holds while content reveals
+    // Where Box 1 starts vertically (fraction of vh from top of pin). Keeps
+    // Box 1 visible as soon as the section enters the viewport — no empty
+    // pinned-scroll dead zone before the animation begins.
+    const ENTER_START_FRAC = 0.20;
+
+    const clamp = (x: number, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+    // Position relative to stack (offsetParent walk — independent of scroll).
+    const localRect = (el: HTMLElement) => {
+      let x = 0, y = 0;
+      let node: HTMLElement | null = el;
+      while (node && node !== stack) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node = node.offsetParent as HTMLElement | null;
       }
-      if (f2 && p2) {
-        const t = seg(p, 0.44, 0.52);
-        f2.style.strokeDasharray = `${p2} ${p2}`;
-        f2.style.strokeDashoffset = `${p2 * (1 - t)}`;
-      }
+      return { x, y, w: el.offsetWidth, h: el.offsetHeight };
     };
+
+    type BarGeom = { total: number; e2: number };
+    let bar1: BarGeom = { total: 0, e2: 0 };
+    let bar2: BarGeom = { total: 0, e2: 0 };
+
+    const buildBar = (src: HTMLElement, dst: HTMLElement, fillEl: SVGPathElement): BarGeom => {
+      const rs = localRect(src), rd = localRect(dst);
+      const sx = rs.x + rs.w / 2;
+      const sy = rs.y + rs.h;
+      const dx = rd.x + rd.w / 2;
+      const dy = rd.y;
+      const horizY = (sy + dy) / 2;
+      const drop1 = horizY - sy;
+      const across = Math.abs(dx - sx);
+      const drop2 = dy - horizY;
+      const d = `M ${sx} ${sy} L ${sx} ${horizY} L ${dx} ${horizY} L ${dx} ${dy}`;
+      fillEl.setAttribute('d', d);
+      const total = drop1 + across + drop2;
+      fillEl.style.strokeDasharray = `${total} ${total}`;
+      fillEl.style.strokeDashoffset = String(total);
+      return { total, e2: total > 0 ? (drop1 + across) / total : 0 };
+    };
+
+    const offsetForBoxAtFreeze = (boxEl: HTMLElement, vh: number) => {
+      const r = localRect(boxEl);
+      return vh * FREEZE_Y_FRAC - r.y;
+    };
+
+    type Phases = {
+      T1: number; T2: number; T3: number; T4: number; T5: number; T6: number; T7: number;
+      freeze1Px: number; freeze2Px: number; freeze3Px: number;
+      offBox1: number; offBox2: number; offBox3: number;
+      offEnterStart: number; offExitEnd: number;
+    };
+    let phases: Phases | null = null;
 
     const rebuild = () => {
-      const stage = stageRef.current;
-      const b1 = box1Ref.current, b2 = box2Ref.current, b3 = box3Ref.current;
-      const f1 = fill1Ref.current, f2 = fill2Ref.current;
-      if (!stage || !b1 || !b2 || !b3 || !f1 || !f2) return;
-      const sr = stage.getBoundingClientRect();
-      const svg = f1.ownerSVGElement;
-      if (svg) svg.setAttribute('viewBox', `0 0 ${sr.width} ${sr.height}`);
-      const anchors = (el: HTMLDivElement) => {
-        const r = el.getBoundingClientRect();
-        return {
-          topMid: { x: r.left + r.width / 2 - sr.left, y: r.top - sr.top },
-          bottomMid: { x: r.left + r.width / 2 - sr.left, y: r.bottom - sr.top },
-        };
+      const w = stack.offsetWidth;
+      const h = stack.offsetHeight;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.style.width = w + 'px';
+      svg.style.height = h + 'px';
+      bar1 = buildBar(b1, b2, f1);
+      bar2 = buildBar(b2, b3, f2);
+
+      const vh = window.innerHeight;
+      const offBox1 = offsetForBoxAtFreeze(b1, vh);
+      const offBox2 = offsetForBoxAtFreeze(b2, vh);
+      const offBox3 = offsetForBoxAtFreeze(b3, vh);
+      // Start with Box 1 partially in view (translateY ≈ 40% of vh) so the
+      // pinned area never shows a blank screen before the animation begins.
+      const offEnterStart = vh * ENTER_START_FRAC - localRect(b1).y;
+      // End the LEAVE phase as soon as Box 3 has cleared the freeze line —
+      // no need to scroll it fully off-screen, that just adds blank scroll.
+      const offExitEnd = offBox3 - vh * 0.3;
+
+      const freeze1Px = bar1.e2 > 0 ? FREEZE_PX / bar1.e2 : FREEZE_PX;
+      const freeze2Px = bar2.e2 > 0 ? FREEZE_PX / bar2.e2 : FREEZE_PX;
+      const freeze3Px = FREEZE3_PX;
+
+      // Between/approach/leave phases scroll at ~1px stack-rise per 1px scroll
+      // (independent of ENTER_PX, which is tuned just for Box 1's settle). This
+      // keeps box-to-box transitions at a natural reading pace regardless of
+      // how snappy the entrance is.
+      const TRANSIT_RATE = 1;
+      const computedBetweenPx = (offBox1 - offBox2) / TRANSIT_RATE;
+      const computedApproach3Px = (offBox2 - offBox3) / TRANSIT_RATE;
+      const computedLeavePx = (offBox3 - offExitEnd) / TRANSIT_RATE;
+
+      const T1 = ENTER_PX;
+      const T2 = T1 + freeze1Px;
+      const T3 = T2 + computedBetweenPx;
+      const T4 = T3 + freeze2Px;
+      const T5 = T4 + computedApproach3Px;
+      const T6 = T5 + freeze3Px;
+      const T7 = T6 + computedLeavePx;
+
+      phases = {
+        T1, T2, T3, T4, T5, T6, T7,
+        freeze1Px, freeze2Px, freeze3Px,
+        offBox1, offBox2, offBox3, offEnterStart, offExitEnd,
       };
-      const a1 = anchors(b1), a2 = anchors(b2), a3 = anchors(b3);
-      const elbow1 = a1.bottomMid.y + (a2.topMid.y - a1.bottomMid.y) * 0.55;
-      const elbow2 = a2.bottomMid.y + (a3.topMid.y - a2.bottomMid.y) * 0.55;
-      const d1 = `M ${a1.bottomMid.x} ${a1.bottomMid.y} L ${a1.bottomMid.x} ${elbow1} L ${a2.topMid.x} ${elbow1} L ${a2.topMid.x} ${a2.topMid.y}`;
-      const d2 = `M ${a2.bottomMid.x} ${a2.bottomMid.y} L ${a2.bottomMid.x} ${elbow2} L ${a3.topMid.x} ${elbow2} L ${a3.topMid.x} ${a3.topMid.y}`;
-      f1.setAttribute('d', d1);
-      f2.setAttribute('d', d2);
-      pathLensRef.current.p1 = f1.getTotalLength();
-      pathLensRef.current.p2 = f2.getTotalLength();
-      applyBars(sectionProgress.get());
+
+      driver.style.height = T7 + 'px';
     };
 
-    let pending = false;
-    const onScroll = () => {
-      if (pending) return;
-      pending = true;
-      // Use microtask to coalesce multiple scroll events within the same frame
-      Promise.resolve().then(() => {
-        pending = false;
-        const el = heroImgRef.current;
-        if (!el) return;
-        const r = el.getBoundingClientRect();
-        const vh = window.innerHeight;
-        // Track from "section top at viewport bottom" (p=0, section just entering)
-        // to "section bottom at viewport top" (p=1, section just exiting).
-        const travel = r.height + vh;
-        const p = clamp((vh - r.top) / travel);
-        sectionProgress.set(p);
-        applyBars(p);
-      });
+    const update = () => {
+      if (!phases) return;
+      const dRect = driver.getBoundingClientRect();
+      const scrolled = -dRect.top;
+      const {
+        T1, T2, T3, T4, T5, T6, T7,
+        freeze1Px, freeze2Px, freeze3Px,
+        offBox1, offBox2, offBox3, offEnterStart, offExitEnd,
+      } = phases;
+
+      let stackY: number, t1: number, t2: number;
+
+      if (scrolled <= 0) {
+        stackY = offEnterStart; t1 = 0; t2 = 0;
+      } else if (scrolled < T1) {
+        stackY = lerp(offEnterStart, offBox1, scrolled / T1);
+        t1 = 0; t2 = 0;
+      } else if (scrolled < T2) {
+        stackY = offBox1;
+        t1 = (scrolled - T1) / (T2 - T1);
+        t2 = 0;
+      } else if (scrolled < T3) {
+        stackY = lerp(offBox1, offBox2, (scrolled - T2) / (T3 - T2));
+        t1 = 1; t2 = 0;
+      } else if (scrolled < T4) {
+        stackY = offBox2;
+        t1 = 1;
+        t2 = (scrolled - T3) / (T4 - T3);
+      } else if (scrolled < T5) {
+        stackY = lerp(offBox2, offBox3, (scrolled - T4) / (T5 - T4));
+        t1 = 1; t2 = 1;
+      } else if (scrolled < T6) {
+        stackY = offBox3;
+        t1 = 1; t2 = 1;
+      } else if (scrolled < T7) {
+        stackY = lerp(offBox3, offExitEnd, (scrolled - T6) / (T7 - T6));
+        t1 = 1; t2 = 1;
+      } else {
+        stackY = offExitEnd; t1 = 1; t2 = 1;
+      }
+
+      stack.style.transform = `translate3d(0, ${stackY}px, 0)`;
+      f1.style.strokeDashoffset = String(bar1.total * (1 - clamp(t1)));
+      f2.style.strokeDashoffset = String(bar2.total * (1 - clamp(t2)));
+
+      // Content reveal windows for each box's progress MotionValue.
+      // Box 1 starts revealing 400px BEFORE the pin engages so the rows are
+      // already filling in as the box enters from below — not waiting for it
+      // to land at the freeze line.
+      const BOX1_EARLY_PX = 400;
+      const box1End = T1 + freeze1Px / 2;
+      leadBoxReveal.set(clamp((scrolled + BOX1_EARLY_PX) / (box1End + BOX1_EARLY_PX)));
+
+      // Box 2 reveal starts AFTER the "Generera offert" button press
+      // completes (T3 + 0.1*freeze2Px), so the press visually triggers the
+      // typing rather than overlapping with it.
+      const box2Start = T3 + freeze2Px * 0.1;
+      const box2End = T3 + freeze2Px * 0.64;
+      quoteRevealProgress.set(clamp((scrolled - box2Start) / (box2End - box2Start)));
+
+      const box3End = T5 + freeze3Px / 2;
+      learningReveal.set(clamp((scrolled - T5) / (box3End - T5)));
+
+      // "Generera offert" button press — quick dip at the start of FREEZE 2.
+      const btnStart = T3;
+      const btnDur = freeze2Px * 0.1;
+      let btnScale = 1;
+      if (scrolled > btnStart && scrolled < btnStart + btnDur) {
+        const u = (scrolled - btnStart) / btnDur;
+        btnScale = lerp(1, 0.78, Math.sin(u * Math.PI));
+      }
+      generateBtnScale.set(btnScale);
     };
-    const onResize = () => { rebuild(); onScroll(); };
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => { rafId = null; update(); });
+    };
+    const onResize = () => { rebuild(); update(); };
 
     rebuild();
-    onScroll();
+    update();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
-    const ro = new ResizeObserver(rebuild);
-    if (stageRef.current) ro.observe(stageRef.current);
+    const ro = new ResizeObserver(() => { rebuild(); update(); });
+    ro.observe(stack);
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       ro.disconnect();
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
-  }, [sectionProgress]);
+  }, [leadBoxReveal, quoteRevealProgress, learningReveal, generateBtnScale]);
 
 
   return (
@@ -769,12 +899,10 @@ export default function LandingPage() {
               transition={{ duration: 0.9, ease: 'easeInOut' }}
             >
               {heroSlide === 0 && (
-                <div className="absolute inset-0 flex items-center justify-end bg-stone-600 pr-12">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-2">Byt ut mot riktig bild</p>
-                    <p className="text-2xl font-bold text-white">Elektriker</p>
-                  </div>
-                </div>
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: 'url(/zaptec.jpg)' }}
+                />
               )}
               {heroSlide === 1 && (
                 <div className="absolute inset-0 flex items-center justify-end bg-stone-500 pr-12">
@@ -856,95 +984,151 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Slide indicator dots */}
-        <div className="absolute bottom-6 right-6 flex gap-2">
-          {[0, 1, 2].map((i) => (
-            <button
-              key={i}
-              onClick={() => setHeroSlide(i)}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                i === heroSlide ? 'w-6 bg-white' : 'w-2 bg-white/40'
-              }`}
-              aria-label={`Bild ${i + 1}`}
-            />
-          ))}
+        {/* Solid fill below Läs mer — matches warm section, no gradient */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-16"
+          style={{ backgroundColor: '#F8F6F3' }}
+        />
+
+        {/* Slide indicator dots + Läs mer button */}
+        <div className="absolute bottom-20 right-6 flex items-center gap-4">
+          <Link to={['/el', '/vvs', '/bygg'][heroSlide]}>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+            >
+              Läs mer
+              <ArrowRight className="h-3.5 w-3.5" />
+            </motion.div>
+          </Link>
+          <div className="flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <button
+                key={i}
+                onClick={() => setHeroSlide(i)}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  i === heroSlide ? 'w-6 bg-white' : 'w-2 bg-white/40'
+                }`}
+                aria-label={`Bild ${i + 1}`}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ── "How it works" — natural-scroll zig-zag with SVG bars between boxes ── */}
+      {/* ── "How it works" — sticky-pin / translated-stack zig-zag ── */}
+      {/* Heading sits above the pinned scene (in normal flow) */}
       <section
-        ref={heroImgRef}
-        className="relative bg-gradient-to-b from-stone-50 to-white pt-32 pb-20 sm:pt-40 sm:pb-24"
+        className="relative pt-4 sm:pt-6"
+        style={{ backgroundColor: '#F8F6F3' }}
       >
-        <div className="mx-auto w-[min(1280px,92vw)]">
-          <div ref={stageRef} className="relative">
-            {/* SVG bars — rendered beneath the boxes */}
-            <svg
-              className="pointer-events-none absolute inset-0 h-full w-full"
-              preserveAspectRatio="none"
-              style={{ zIndex: 1 }}
-            >
-              <path
-                ref={fill1Ref}
-                fill="none"
-                stroke="#c85a1f"
-                strokeWidth={14}
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-              />
-              <path
-                ref={fill2Ref}
-                fill="none"
-                stroke="#c85a1f"
-                strokeWidth={14}
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-              />
-            </svg>
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+            opacity: 0.08,
+          }}
+        />
+        <div className="relative mx-auto w-[min(1280px,92vw)]">
+          <FadeIn>
+            <div className="mx-auto pb-6 text-center sm:pb-8">
+              <span className="inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent">
+                Från lead till avslut
+              </span>
+              <h2 className="mt-4 font-heading text-3xl font-bold text-foreground sm:text-4xl">
+                Bättre leads. <span className="text-accent">Snabbare offerter.</span> Nöjdare kunder.
+              </h2>
+              <p className="mx-auto mt-5 max-w-3xl text-lg text-muted-foreground">
+                Quotly sköter hela kedjan — sållar bort dåliga förfrågningar, skriver offerten åt dig och följer upp svaren automatiskt.
+              </p>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
 
-            <div className="flex flex-col gap-20 sm:gap-24">
-              {/* Row 1 — Box 1 left, text slot right */}
-              <div className="flex items-center justify-between">
-                <motion.div
+      {/* Driver: tall scroll container. Inside, a single sticky pin holds the
+          stage in the viewport; the stack of boxes inside translates via JS. */}
+      <div
+        ref={driverRef}
+        className="relative"
+        style={{ backgroundColor: '#F8F6F3' }}
+      >
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+            opacity: 0.08,
+          }}
+        />
+        <div className="sticky top-0 h-screen w-full overflow-hidden">
+          <div className="relative mx-auto h-full w-[min(1280px,92vw)]">
+            <div
+              ref={stackRef}
+              className="absolute inset-x-0 top-0"
+              style={{ willChange: 'transform' }}
+            >
+              <svg
+                ref={svgRef}
+                className="pointer-events-none absolute inset-0"
+                preserveAspectRatio="none"
+                style={{ zIndex: 1, overflow: 'visible' }}
+              >
+                <path
+                  ref={fill1Ref}
+                  fill="none"
+                  stroke="#c85a1f"
+                  strokeWidth={14}
+                  strokeLinecap="square"
+                  strokeLinejoin="miter"
+                />
+                <path
+                  ref={fill2Ref}
+                  fill="none"
+                  stroke="#c85a1f"
+                  strokeWidth={14}
+                  strokeLinecap="square"
+                  strokeLinejoin="miter"
+                />
+              </svg>
+
+              <div className="flex w-full" style={{ position: 'relative', zIndex: 2 }}>
+                <div
                   ref={box1Ref}
-                  style={{ opacity: box1Opacity, zIndex: 2 }}
+                  className="relative aspect-[4/3] w-[55%]"
+                >
+                  <LeadBox progress={leadBoxReveal} />
+                </div>
+              </div>
+
+              <div style={{ height: 320 }} aria-hidden />
+
+              <div className="flex w-full justify-end" style={{ position: 'relative', zIndex: 2 }}>
+                <div
+                  ref={box2Ref}
                   className="relative aspect-[4/3] w-[55%]"
                 >
                   <QuoteSlot progress={quoteRevealProgress} btnScale={generateBtnScale} />
-                </motion.div>
-                <div className="w-[42%]" aria-hidden />
+                </div>
               </div>
 
-              {/* Row 2 — text slot left, Box 2 right */}
-              <div className="flex items-center justify-between">
-                <div className="w-[42%]" aria-hidden />
-                <motion.div
-                  ref={box2Ref}
-                  style={{ opacity: box2Opacity, zIndex: 2 }}
+              <div style={{ height: 320 }} aria-hidden />
+
+              <div className="flex w-full" style={{ position: 'relative', zIndex: 2 }}>
+                <div
+                  ref={box3Ref}
                   className="relative aspect-[4/3] w-[55%]"
                 >
                   <LearningSlot progress={learningReveal} />
-                </motion.div>
-              </div>
-
-              {/* Row 3 — Box 3 placeholder left, text slot right */}
-              <div className="flex items-center justify-between">
-                <motion.div
-                  ref={box3Ref}
-                  style={{ opacity: box3Opacity, zIndex: 2 }}
-                  className="relative aspect-[4/3] w-[55%]"
-                >
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border border-stone-300 bg-stone-100 shadow-md">
-                    <span className="text-xs font-semibold uppercase tracking-widest text-stone-400">Steg 03</span>
-                    <span className="text-sm font-medium text-stone-600">Skicka & följ upp</span>
-                  </div>
-                </motion.div>
-                <div className="w-[42%]" aria-hidden />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* FlipDeck: card 4 barely moves as dark section rises over it */}
       <motion.div

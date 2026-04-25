@@ -1,58 +1,45 @@
 # Session State
 
-Last updated: 2026-04-23 (after Phase 4 + Phase 5 build)
-Branch: main — uncommitted changes (Phases 4 + 5, not yet committed or pushed)
+Last updated: 2026-04-25
+Branch: main — clean after this session's commits land
 
-**⚡ NEXT ACTION when opening a fresh session:** Phases 4 and 5 are built but not committed. Commit them as two separate commits (Phase 4 — Inbox UI, Phase 5 — Convert to quote), push to main, then move to Post-MVP work. See "What comes next" below.
+**⚡ NEXT ACTION when opening a fresh session:** "How it works" section is fully rebuilt and committed. Tunables for the scroll animation (FREEZE_PX, ENTER_PX, FREEZE3_PX, FREEZE_Y_FRAC, ENTER_START_FRAC, BOX1_EARLY_PX, box2 reveal window) live at the top of the `useLayoutEffect` in `LandingPage.tsx` if pacing needs further dialing.
 
 ## What was done this session
 
-- **Phase 4 — Inbox UI**: Built `src/pages/Inbox.tsx`, `src/pages/IncomingRequestDetail.tsx`, `src/components/IncomingRequestCard.tsx`, `src/components/ScoreRing.tsx`, `src/components/FlagsList.tsx`, `src/hooks/useIncomingRequests.tsx`. Added `/inbox` and `/inbox/:id` routes to `App.tsx`. Added "Förfrågningar" nav item to `Navbar.tsx`. Inbox uses Dashboard-style Card-based filter grid (Alla / Hett / Ljummet / Kallt / Obesvarade).
-- **Phase 5 — Convert to quote**: Added `useGenerateQuoteFromRequest` hook to `useIncomingRequests.tsx` — calls `generate-quote` edge function with flattened form answers as text, navigates to QuoteBuilder with full `aiData` including generated line items. Added `convertRequest` mutation. Patched `QuoteBuilder.tsx` to pre-fill phone/email from `aiData` and mark the request as `converted` (with `converted_to_quote_id`) on save. Added "Från förfrågan" card to `QuoteDetail.tsx` via a React Query lookup on `incoming_requests.converted_to_quote_id`.
-- **Verified in browser**: Inbox renders live data (Anna Andersson, score 91, Hett, flags, summary). Layout matches Dashboard style.
+- **Replaced "How it works" scroll architecture entirely.** The previous per-row sticky + getBoundingClientRect-on-every-scroll approach had unfixable sub-pixel wobble during sticky phases (path coords drifted vs. SVG render position). Rewrote using a **single sticky pin + JS-translated stack**: one `position: sticky` container holds the stage in the viewport, and the inner stack of 3 boxes + 2 SVG bars is moved via `transform: translate3d(0, Y, 0)` driven by scroll progress. SVG paths are computed ONCE at layout (via `offsetParent` walk in stack-local coords) and never per-scroll, so no wobble.
+- **Phase-based scroll model:** ENTER → FREEZE 1 (bar 1 fills) → BETWEEN → FREEZE 2 (bar 2 fills) → APPROACH 3 → FREEZE 3 (box 3 reveals) → LEAVE. Each phase has its own scroll-px budget; transit phases (BETWEEN/APPROACH/LEAVE) use `TRANSIT_RATE = 1` (1px stack-rise per 1px scroll) so they don't get distorted when ENTER or FREEZE durations are tuned.
+- **Box content reveal windows tuned to user feedback:**
+  - Box 1: starts revealing 400px BEFORE the pin engages (`BOX1_EARLY_PX = 400`) so rows fill in as the box rises into view, not after it lands.
+  - Box 2: starts revealing AFTER the "Generera offert" button press completes (`box2Start = T3 + freeze2Px * 0.1`), so the press visually triggers the typing.
+  - Box 3: extended `FREEZE3_PX = 1400` so all 4 material rows + the prompt fully reveal before box 3 starts leaving.
+- **Trimmed dead scroll** above and below the section: heading section uses tight `pt-4 sm:pt-6`, driver height = T7 (no trailing `+ vh`), and `offExitEnd = offBox3 - vh*0.3` ends the LEAVE phase as soon as box 3 clears the freeze line.
+- **Source of architecture:** `scroll-line-demo-fixed.html` at the project root (NOT committed — working file). User built it externally to validate the approach; current `LandingPage.tsx` implementation is a faithful React port of that demo's logic with the existing `LeadBox` / `QuoteSlot` / `LearningSlot` components slotted in.
+- **Committed two missing files** that previous sessions had built but never tracked: `src/components/LeadBox.tsx` + `LeadBox.css` (imported by LandingPage all along) and `public/zaptec.jpg` (referenced as `url(/zaptec.jpg)` in the hero).
 
 ## Current state
 
-- Full lead-filter loop is working end-to-end: customer submits `/offert/<slug>` → AI scores → lead appears in `/inbox` → firm clicks "Generera offert" → `generate-quote` called with form data → QuoteBuilder pre-filled → firm saves → request marked `converted` → QuoteDetail shows "Från förfrågan" link back to inbox.
-- Test rows in production DB: `92167e84-...` scored 91/Hett/hög, `375fd966-...` unscored (Phase 2 test).
-- Dev server runs on port 8081 via `.claude/launch.json`.
-
-## Uncommitted changes
-
-All Phase 4 + Phase 5 work is uncommitted. Modified files:
-- `.claude/launch.json` (added `autoPort: false`)
-- `src/App.tsx` (added `/inbox`, `/inbox/:id` routes)
-- `src/components/Navbar.tsx` (added Förfrågningar nav item)
-- `src/pages/QuoteBuilder.tsx` (phone/email pre-fill + convert-on-save)
-- `src/pages/QuoteDetail.tsx` (Från förfrågan card)
-
-Untracked new files:
-- `src/components/FlagsList.tsx`
-- `src/components/IncomingRequestCard.tsx`
-- `src/components/ScoreRing.tsx`
-- `src/hooks/useIncomingRequests.tsx`
-- `src/pages/Inbox.tsx`
-- `src/pages/IncomingRequestDetail.tsx`
+- All lead-filter phases (0–5) committed and pushed.
+- "How it works" section uses the new sticky-pin / translated-stack architecture — wobble-free, content reveals tuned, dead scroll trimmed.
+- Hero slide auto-rotation (4.5s, 3 slides: Elektriker / VVS-tekniker / Byggare) live, now with a real photo for slide 0 (`zaptec.jpg`).
+- Trade routes (`/bygg` etc.) live but still using placeholder content.
 
 ## What comes next
 
-1. **Commit and push**: Two commits — `feat(lead-filter): Phase 4 — Inbox UI` and `feat(lead-filter): Phase 5 — Convert to quote`. Then push to main.
-2. **Post-MVP: Template editor UI in Settings** — user flagged this as most wanted V2. `company_form_templates` table + RLS already exists. New Settings section "Formulär" listing templates with enable/disable toggle and preview. Pure UI + mutation work, no new schema.
-3. **Post-MVP: Trade-specific homepage entry points** — marketing/SEO pages per trade (El, VVS, Bygg, Övrigt). Needs copy direction discussion before building.
+1. **Post-MVP: Template editor UI in Settings** — most wanted V2 feature. `company_form_templates` table + RLS already exists. New Settings section "Formulär" with enable/disable toggle and preview.
+2. **Trade landing pages — real copy and images** — `/bygg`, `/vvs`, `/el`, `/ovrigt` currently use placeholder content. Needs copy direction discussion before building.
+3. **Optional follow-up on "How it works" pacing**: if any phase still feels too fast or too slow on a different viewport size, tunables are at the top of the `useLayoutEffect` block.
 
 ## Open questions
 
-- **Per-template `red_flag_rules` not injected into scoring prompt** — today scoring AI reads template name/description but not the per-template prose rules. Low priority; live test showed AI catches issues from own knowledge. Wire in if scoring quality suffers.
-- **Post-MVP priority order** — template editor vs. homepage pages vs. learning system rewrite. User has not decided.
-- **Resend sandbox constraint still in place** — `onboarding@resend.dev` only delivers to Resend account owner. If email notifications on new leads are added later, this blocks delivery until domain is verified.
+- **Post-MVP priority** — template editor vs. trade pages vs. learning system rewrite. Not decided.
+- **Resend sandbox constraint** — `onboarding@resend.dev` only delivers to Resend account owner. Blocks email notifications on new leads until domain verified.
 
 ## Context that is easy to forget
 
-- `useGenerateQuoteFromRequest` uses `useCompanyBusinessProfile` to get `primary_trade` for the `generate-quote` call — if the firm has no business profile set, trade falls back to `'general'`.
-- `generate-quote` is rate-limited to 20/day per user — this limit also applies when triggered from the inbox flow (same edge function, same counter).
-- `QuoteBuilder` marks the request converted fire-and-forget (`.then()` without await) so it never blocks the save or navigation flow.
-- `incoming_requests` RLS: SELECT/UPDATE scoped to company members; writes only via service-role edge functions. The `convertRequest` mutation in `useIncomingRequests` does a direct `.update()` which works because authenticated company members have UPDATE rights.
-- Scoring uses Claude Sonnet 4.6; classification uses Haiku 4.5; quote generation uses Haiku via `generate-quote`.
-- Tier thresholds hard-coded in `score-incoming-request` (75/45/0). Not configurable per firm.
-- Photo uploads go through `create-intake-upload-url` → signed URL → `uploadToSignedUrl`. Direct browser INSERT to storage bucket fails RLS.
-- Slugify handles Swedish diacritics (å→a, ä→a, ö→o) via `translate()` in `slugify_company_name` DB trigger.
+- "How it works" architecture: single sticky pin (`position: sticky; top: 0; height: 100vh; overflow: hidden`) wraps a stack of 3 boxes + 2 SVG bars. Stack moves via `translate3d`. Path coordinates use `offsetParent` walk (independent of scroll), so they're computed once at layout — NEVER recompute paths per scroll, that brings the wobble back.
+- TRANSIT_RATE controls how fast box-to-box transitions feel; ENTER_PX / FREEZE_PX are independent and can be tuned without affecting transit pacing.
+- `_design_handoff/`, `landing page quotly.zip`, `scroll-line-demo-fixed.html`, `Lead Cards Scroll Animation.html`, `quotly-tokens.css`, and `zaptec-UHNdOFqNhNQ-unsplash.jpg` are working files in the project root that should not be committed.
+- Dev server runs on port 8081 via `.claude/launch.json`.
+- Scoring uses Claude Sonnet 4.6; classification Haiku 4.5; quote generation Haiku via `generate-quote`.
+- `generate-quote` is rate-limited to 20/day per user — applies when triggered from inbox too.
