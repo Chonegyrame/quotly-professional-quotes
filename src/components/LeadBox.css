@@ -1,0 +1,410 @@
+/* ============================================================
+   LeadBox — scroll-driven lead-cards animation for landing page
+   Scoped styles; does not leak to the rest of the app.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.leadbox-outer {
+  /* Fills the parent motion.div (aspect-[4/3] w-[55%]) */
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #faf9f7;
+  box-shadow: 0 14px 24px -8px rgba(22, 20, 15, 0.10), 0 4px 8px -4px rgba(22, 20, 15, 0.05);
+
+  /* Scoped design tokens — do not cascade outside */
+  --lb-orange-300: #ef9d62;
+  --lb-orange-400: #e67b3a;
+  --lb-orange-500: #c85a1f;
+  --lb-stone-100: #f1ece4;
+  --lb-stone-200: #e3dccf;
+  --lb-stone-300: #cec4b1;
+  --lb-stone-400: #ab9f88;
+  --lb-stone-500: #867a63;
+  --lb-stone-700: #443e34;
+  --lb-stone-900: #16140f;
+  --lb-white-warm: #fdfaf4;
+  --lb-success-100: #e4ead7;
+  --lb-success-500: #4a7c3a;
+  --lb-caution-100: #f7e9bc;
+  --lb-caution-500: #d8a52b;
+  --lb-danger-500: #a9321d;
+  --lb-tracking-label: 0.08em;
+  --lb-tracking-stamp: 0.14em;
+  --lb-font-display: 'Archivo', 'Archivo Narrow', system-ui, sans-serif;
+  --lb-font-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --lb-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --lb-ease-snap: cubic-bezier(0.4, 1.6, 0.5, 1);
+  --lb-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Outer dot grid — sits behind the white card, visible around its edges */
+.leadbox-outer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(100, 116, 139, 0.18) 1px, transparent 1px);
+  background-size: 16px 16px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scaled inner surface — sized to design spec (704×528) and
+   scaled to fit the parent via transform. Keeps the layout pixel-
+   perfect at every viewport. */
+.leadbox-scaler {
+  width: 704px;
+  height: 528px;
+  transform-origin: top left;
+  will-change: transform;
+  position: relative;
+  z-index: 1;
+}
+
+.leadbox {
+  position: absolute;
+  inset: 16px;
+  background: #ffffff;
+  border: 1px solid var(--lb-stone-200);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--lb-font-body);
+}
+
+/* ── Header row (brand left, status pill right) ── */
+.leadbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--lb-stone-100);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.leadbox-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leadbox-brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--lb-stone-900);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.leadbox-brand-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.leadbox-brand-name {
+  font-family: var(--lb-font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--lb-stone-900);
+  letter-spacing: -0.01em;
+}
+
+.leadbox-badge {
+  font-family: var(--lb-font-display);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: var(--lb-tracking-stamp);
+  text-transform: uppercase;
+  color: var(--lb-orange-500);
+  border: 1px solid var(--lb-orange-400);
+  border-radius: 4px;
+  padding: 4px 8px;
+  line-height: 1;
+  box-shadow: 1.5px 1.5px 0 rgba(0, 0, 0, 0.12);
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+}
+
+.leadbox-badge .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lb-orange-500);
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: lb-pulse 1.6s var(--lb-ease-out) infinite;
+}
+
+@keyframes lb-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* ── Each lead row (flows continuously inside the card) ── */
+.lead {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--lb-stone-200);
+  border-radius: 0;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto 1fr;
+  gap: 6px 14px;
+  position: relative;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.lead:last-child {
+  border-bottom: none;
+}
+
+.lead::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--lb-orange-500);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 320ms var(--lb-ease-snap) 180ms;
+}
+
+.lead.is-in::after {
+  transform: scaleY(1);
+}
+
+/* Header row */
+.lead-head {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lead-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--lb-stone-300);
+  color: var(--lb-stone-700);
+  background: var(--lb-stone-100);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--lb-font-display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.lead-name {
+  font-family: var(--lb-font-body);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--lb-stone-900);
+  line-height: 1.1;
+}
+
+.lead-trade {
+  margin-top: 3px;
+  font-family: var(--lb-font-display);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: var(--lb-tracking-stamp);
+  text-transform: uppercase;
+  color: var(--lb-orange-500);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lead-trade .pip {
+  width: 5px;
+  height: 5px;
+  background: var(--lb-orange-400);
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Score cluster */
+.lead-score {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 132px;
+}
+
+.score-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.score-label {
+  font-family: var(--lb-font-display);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: var(--lb-tracking-stamp);
+  text-transform: uppercase;
+  color: var(--lb-stone-500);
+}
+
+.score-num {
+  font-family: var(--lb-font-mono);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--lb-stone-900);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6ch;
+  text-align: right;
+}
+
+.score-num.high { color: var(--lb-success-500); }
+.score-num.mid  { color: #a57f1e; }
+.score-num.low  { color: var(--lb-danger-500); }
+
+.score-bar {
+  width: 132px;
+  height: 6px;
+  background: var(--lb-stone-200);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.score-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--lb-orange-500);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
+}
+
+.score-fill.high { background: var(--lb-success-500); }
+.score-fill.mid  { background: var(--lb-caution-500); }
+.score-fill.low  { background: var(--lb-danger-500); }
+
+/* Project line */
+.lead-project {
+  grid-column: 1 / -1;
+  font-family: var(--lb-font-mono);
+  font-size: 13px;
+  color: var(--lb-stone-500);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Meta row (budget, timeline) */
+.lead-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--lb-font-mono);
+  font-size: 13px;
+  color: var(--lb-stone-700);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta-item svg {
+  width: 14px;
+  height: 14px;
+  color: var(--lb-orange-500);
+  flex: 0 0 auto;
+}
+
+.meta-item .v {
+  color: var(--lb-stone-900);
+  font-weight: 500;
+}
+
+/* Tags row */
+.lead-tags {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--lb-stone-200);
+  padding-top: 10px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--lb-font-display);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: var(--lb-tracking-label);
+  text-transform: uppercase;
+  color: var(--lb-stone-700);
+  padding: 4px 9px;
+  border: 1px solid var(--lb-stone-200);
+  border-radius: 999px;
+  background: #fbf9f5;
+}
+
+.tag.check {
+  color: #3a6029;
+  border-color: #c2d0a7;
+  background: var(--lb-success-100);
+}
+
+.tag.check::before {
+  content: "✓";
+  color: var(--lb-success-500);
+  font-weight: 700;
+}
+
+/* Footer */
+.leadbox-foot {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--lb-stone-500);
+  font-family: var(--lb-font-mono);
+  font-size: 10px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.leadbox-foot .arrows {
+  display: flex;
+  gap: 14px;
+}
