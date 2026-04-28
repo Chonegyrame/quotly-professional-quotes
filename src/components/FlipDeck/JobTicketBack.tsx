@@ -46,7 +46,7 @@ export function JobTicketBack({ idx, stamp, teaser }: JobTicketBackProps) {
           <div className="mb-2.5 font-display text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">
             Funktion
           </div>
-          <div className="font-display text-[22px] font-bold leading-tight tracking-tight text-stone-900">
+          <div className="font-display text-[22px] font-bold leading-tight text-stone-900">
             {stamp}
           </div>
         </div>

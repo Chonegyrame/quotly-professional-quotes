@@ -13,10 +13,10 @@ import { JobTicketBack } from './JobTicketBack';
 import { FrontPanel } from './FrontPanel';
 import { Stamp } from './atoms/Stamp';
 
-import { AIComposerPreview } from './previews/AIComposerPreview';
-import { LearningFeedPreview } from './previews/LearningFeedPreview';
-import { MaterialBankPreview } from './previews/MaterialBankPreview';
-import { LifecyclePreview } from './previews/LifecyclePreview';
+import { ROTCalcPreview } from './previews/ROTCalcPreview';
+import { MaterialFlowPreview } from './previews/MaterialFlowPreview';
+import { QuoteTrackingPreview } from './previews/QuoteTrackingPreview';
+import { BusinessInsightsPreview } from './previews/BusinessInsightsPreview';
 
 interface FlipCardData {
   idx: string;
@@ -30,51 +30,51 @@ interface FlipCardData {
 const CARDS: FlipCardData[] = [
   {
     idx: '01',
-    stamp: 'AI · Offertmotor',
-    title: 'Skriv jobbet. Få offerten.',
-    body: 'En rad text eller ett foto räcker. Quotly plockar material, arbete och påslag och levererar en komplett offert — redo att skicka.',
-    teaser: 'riv gipsvägg mellan kök och matsal, nya reglar, 3 eluttag...',
-    preview: <AIComposerPreview />,
+    stamp: 'ROT · Avdrag',
+    title: 'ROT-avdraget räknas automatiskt.',
+    body: 'Quotly skiljer arbete från material, kollar takgränsen mot kunden och visar rätt belopp direkt på offerten.',
+    teaser: 'rot 30% av arbete · 31 200 kr kvar i år för K. Andersson',
+    preview: <ROTCalcPreview />,
   },
   {
     idx: '02',
-    stamp: 'Lärsystem · 4 lager',
-    title: 'Varje jobb tränar nästa offert.',
-    body: 'Quotly följer vad du faktiskt fakturerar, vad du lägger till manuellt och hur dina priser rör sig. Nästa offert sitter tätare än förra.',
-    teaser: 'timpenning på ramjobb: 850 → 920 kr (lärde sig igår)',
-    preview: <LearningFeedPreview />,
+    stamp: 'Materialbank · Påslag',
+    title: 'Inköpspris in. Utpris ut. Påslag automatiskt.',
+    body: 'Sätt ett globalt påslag (eller per artikel), så räknar Quotly resten. Snart även live-priser från Ahlsell, Onninen och Dahl, så listan alltid är uppdaterad.',
+    teaser: 'gipsskiva 112 kr  →  +20% globalt  →  134 kr utpris',
+    preview: <MaterialFlowPreview />,
   },
   {
     idx: '03',
-    stamp: 'Materialbank',
-    title: 'Inköpspris in. Utpris ut.',
-    body: 'Spara material en gång, sätt ett påslag, använd på varje jobb. Påslaget räknas per rad — moms också.',
-    teaser: 'gipsskiva 112 kr  →  +33%  →  149 kr utpris',
-    preview: <MaterialBankPreview />,
+    stamp: 'Uppföljning · PDF',
+    title: 'Spåra offerten från skickad till godkänd.',
+    body: 'Varje offert stämplas längs vägen, från utkast till godkänd. Kunden får en länk de kan dela vidare och ladda ner som PDF, helt utan inlogg.',
+    teaser: 'offert #1042 · öppnad 11:47 · pdf nedladdad 11:49',
+    preview: <QuoteTrackingPreview />,
   },
   {
     idx: '04',
-    stamp: 'Uppföljning',
-    title: 'Du ser när kunden öppnar.',
-    body: 'Varje offert stämplas längs vägen — utkast, skickad, öppnad, godkänd. Ring när den är varm, inte tre dagar senare.',
-    teaser: 'offert #1042 · öppnad av Dave för 2 min sedan',
-    preview: <LifecyclePreview />,
+    stamp: 'Affärsanalys',
+    title: 'Statistik som visar vinstmönstret.',
+    body: 'Quotly sammanställer varje offert och varje svar. Vilka jobb du faktiskt vinner, vilka som dräller, och hur snabbt du borde svara för att få jobbet.',
+    teaser: 'vvs-akut: 73% blir affär · svar inom 2h tredubblar chansen',
+    preview: <BusinessInsightsPreview />,
   },
 ];
 
 export function FlipDeckSection() {
   return (
-    <section className="bg-[#fdfaf4] px-12 pb-32 pt-20">
+    <section className="bg-[#F8F6F3] px-12 pb-32 pt-20">
       {/* Section header */}
       <div className="mx-auto mb-14 max-w-[640px] text-center">
         <Stamp orange className="mb-4">
           FUNKTIONER · 04
         </Stamp>
-        <h2 className="mb-3 font-display text-[44px] font-extrabold leading-[1.04] tracking-[-0.02em] text-stone-900">
-          Fyra jobb-tickets. Öppna dem i tur och ordning.
+        <h2 className="mb-3 font-display text-[44px] font-bold leading-[1.08] text-stone-900">
+          Mer än bara en offerttjänst.
         </h2>
         <p className="text-[16px] leading-[1.55] text-stone-700">
-          Varje kort flippar upp när du scrollar förbi det. Först #1, sedan #2, #3, #4.
+          Quotly håller koll på de små detaljerna som avgör om en offert blir en affär.
         </p>
       </div>
 
@@ -85,7 +85,7 @@ export function FlipDeckSection() {
             key={c.idx}
             axis="x"
             duration={820}
-            height={460}
+            height={425}
             triggerAt={0.4}
             className="mb-6"
             back={
