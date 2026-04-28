@@ -13,7 +13,6 @@ type SendQuotePayload = {
   quoteId: string;
   recipient: string;
   method: string;
-  attachPdf?: boolean;
   message?: string;
 };
 
@@ -60,7 +59,7 @@ serve(async (req: Request) => {
     );
     if (ipResp) return ipResp;
 
-    const { quoteId, recipient, method, attachPdf, message }: SendQuotePayload = await req.json();
+    const { quoteId, recipient, method, message }: SendQuotePayload = await req.json();
     if (!quoteId || !recipient || !method) {
       return jsonResponse(
         { error: "Invalid payload. Required: quoteId, recipient, method." },
@@ -109,57 +108,10 @@ serve(async (req: Request) => {
       <a href="${publicQuoteUrl}" style="display:inline-block;padding:10px 24px;background:#1e3a5f;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">Öppna offerten</a>
     `;
 
-    // Optionally generate and attach PDF
-    let attachments: Array<{ filename: string; content: string }> = [];
-    if (attachPdf) {
-      try {
-        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-        const pdfRes = await fetch(
-          `${supabaseUrl}/functions/v1/generate-pdf`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${serviceRoleKey}`,
-              apikey: supabaseAnonKey,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ quoteId }),
-          },
-        );
-        if (pdfRes.ok) {
-          const pdfBuffer = await pdfRes.arrayBuffer();
-          const bytes = new Uint8Array(pdfBuffer);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          attachments = [{
-            filename: `Offert-${(quote.customer_name || "offert").replace(/[^a-zA-Z0-9 _-]/g, "")}.pdf`,
-            content: btoa(binary),
-          }];
-        } else {
-          const errBody = await pdfRes.text().catch(() => "(could not read body)");
-          console.error(`generate-pdf failed: ${pdfRes.status} ${pdfRes.statusText}`, errBody);
-          return jsonResponse(
-            {
-              error: "Kunde inte generera PDF-bilaga",
-              pdfStatus: pdfRes.status,
-              pdfError: errBody,
-            },
-            502,
-          );
-        }
-      } catch (pdfErr) {
-        console.error("PDF attachment generation threw:", pdfErr);
-        return jsonResponse(
-          {
-            error: "Kunde inte generera PDF-bilaga",
-            details: pdfErr instanceof Error ? pdfErr.message : String(pdfErr),
-          },
-          502,
-        );
-      }
-    }
+    // Quotes are sent link-only. The customer view at /q/:id offers a "Ladda ner som PDF"
+    // button if the recipient wants to save a copy locally. Removing the email attachment
+    // ensures we capture an "opened" event when the customer actually views the quote
+    // (a PDF-only customer would otherwise be invisible to our tracking).
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -172,7 +124,6 @@ serve(async (req: Request) => {
         to: recipient.trim(),
         subject,
         html,
-        ...(attachments.length > 0 ? { attachments } : {}),
       }),
     });
 

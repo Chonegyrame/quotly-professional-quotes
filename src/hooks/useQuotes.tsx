@@ -395,19 +395,46 @@ export function useQuote(quoteId: string | undefined) {
   return quotes.find((q: any) => q.id === quoteId) ?? null;
 }
 
-// Hook for public customer view (no auth required)
+// Hook for public customer view (no auth required).
+// Also pulls a sanitized slice of company branding via the
+// get_quote_company_branding RPC so CustomerView can render a polished
+// formal-document layout matching the PDF. Branding fetch failure is
+// non-fatal — the quote still loads, just without logo/contact info.
 export function usePublicQuote(quoteId: string | undefined) {
   return useQuery({
     queryKey: ['public-quote', quoteId],
     queryFn: async () => {
       if (!quoteId) return null;
-      const { data, error } = await supabase
+
+      const { data: quote, error } = await supabase
         .from('quotes')
         .select('*, quote_items(*, quote_item_materials(*)), quote_events(*)')
         .eq('id', quoteId)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      if (!quote) return null;
+
+      let companyBranding: {
+        name: string;
+        org_number: string;
+        address: string;
+        phone: string;
+        email: string;
+        logo_url: string;
+        bankgiro: string;
+      } | null = null;
+
+      try {
+        const { data: branding } = await (supabase as any)
+          .rpc('get_quote_company_branding', { p_quote_id: quoteId });
+        if (Array.isArray(branding) && branding.length > 0) {
+          companyBranding = branding[0];
+        }
+      } catch {
+        // Non-fatal — render without branding
+      }
+
+      return { ...quote, company_branding: companyBranding };
     },
     enabled: !!quoteId,
   });

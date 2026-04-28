@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Mail, Phone, Send, Loader2, Paperclip } from 'lucide-react';
+import { Mail, Phone, Send, Loader2, Eye } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { CustomerViewPreviewDialog } from '@/components/CustomerViewPreviewDialog';
 
 interface SendQuoteModalProps {
   open: boolean;
@@ -34,8 +34,8 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, customerName
   const [recipient, setRecipient] = useState(customerEmail);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [attachPdf, setAttachPdf] = useState(true);
   const [message, setMessage] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -61,7 +61,6 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, customerName
           quoteId,
           recipient: recipient.trim(),
           method: method === 'phone' ? 'sms' : 'email',
-          attachPdf: method === 'email' ? attachPdf : false,
           message: message.trim() || undefined,
         },
       });
@@ -167,19 +166,15 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, customerName
             </p>
           </div>
 
-          {method !== 'phone' && (
-            <div className="flex items-center gap-2.5">
-              <Checkbox
-                id="attach-pdf"
-                checked={attachPdf}
-                onCheckedChange={(checked) => setAttachPdf(!!checked)}
-              />
-              <Label htmlFor="attach-pdf" className="text-sm cursor-pointer flex items-center gap-1.5">
-                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                Bifoga PDF som bilaga
-              </Label>
-            </div>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => setPreviewOpen(true)}
+          >
+            <Eye className="h-4 w-4" />
+            Förhandsgranska kundvyn
+          </Button>
 
           <Button
             className="w-full gap-2"
@@ -195,6 +190,12 @@ export function SendQuoteModal({ open, onOpenChange, customerEmail, customerName
           </Button>
         </div>
       </DialogContent>
+
+      <CustomerViewPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        quoteId={quoteId}
+      />
     </Dialog>
   );
 }

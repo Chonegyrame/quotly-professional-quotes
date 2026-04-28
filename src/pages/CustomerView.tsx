@@ -1,4 +1,4 @@
-﻿import { useParams } from 'react-router-dom';
+﻿import { useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { Check, FileText, RefreshCw, X, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 
 export default function CustomerView() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const isPreview = searchParams.get('preview') === 'true';
   const { data: quote, isLoading } = usePublicQuote(id);
   const [responded, setResponded] = useState(false);
   const [responseType, setResponseType] = useState<'accepted' | 'declined'>('accepted');
@@ -35,7 +37,9 @@ export default function CustomerView() {
   const isDeclined = quote?.status === 'declined';
 
   useState(() => {
-    if (id) {
+    // Skip the "opened" side effect when this view is rendered as a contractor preview
+    // (avoids marking the quote as opened by the customer when the contractor previews it).
+    if (id && !isPreview) {
       const statusUpdate =
         quote?.status === 'sent'
           ? { opened_at: new Date().toISOString(), status: 'opened' }
@@ -93,29 +97,35 @@ export default function CustomerView() {
   const total = subtotal + vat;
 
   const handleAccept = async () => {
-    await supabase
-      .from('quotes')
-      .update({
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      })
-      .eq('id', quote.id);
+    // In preview mode, skip the DB write but still flip the local state so the
+    // contractor can see what the success screen looks like.
+    if (!isPreview) {
+      await supabase
+        .from('quotes')
+        .update({
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', quote.id);
 
-    await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'accepted' });
+      await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'accepted' });
+    }
 
     setResponseType('accepted');
     setResponded(true);
   };
 
   const handleDecline = async () => {
-    await supabase
-      .from('quotes')
-      .update({
-        status: 'declined',
-      })
-      .eq('id', quote.id);
+    if (!isPreview) {
+      await supabase
+        .from('quotes')
+        .update({
+          status: 'declined',
+        })
+        .eq('id', quote.id);
 
-    await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'declined' });
+      await supabase.from('quote_events').insert({ quote_id: quote.id, event_type: 'declined' });
+    }
 
     setResponseType('declined');
     setResponded(true);
@@ -188,93 +198,185 @@ export default function CustomerView() {
     );
   }
 
+  // Mirrors the PDF layout. Branding fields come from the
+  // get_quote_company_branding RPC (whitelisted columns only — see migration).
+  const branding = (quote as any).company_branding as
+    | { name: string; org_number: string; address: string; phone: string; email: string; logo_url: string; bankgiro: string }
+    | null;
+
+  const brandingDetails = branding
+    ? ([
+        branding.org_number && `Org.nr: ${branding.org_number}`,
+        branding.address,
+        branding.phone,
+        branding.email,
+      ].filter(Boolean) as string[])
+    : [];
+
+  const customerLines = [
+    quote.customer_name,
+    quote.customer_email,
+    (quote as any).customer_phone,
+    (quote as any).customer_address,
+  ].filter(Boolean) as string[];
+
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
-      <div className="max-w-lg mx-auto animate-fade-in">
-        <div className="text-center mb-6">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary mx-auto mb-3">
-            <FileText className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h2 className="font-heading font-bold text-lg">Offert</h2>
-        </div>
+    <div className={`bg-background ${isPreview ? 'p-3' : 'min-h-screen p-4 md:p-6'}`}>
+      <div className="max-w-2xl mx-auto animate-fade-in">
 
         <Card className="mb-4">
-          <CardContent className="p-4">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h1 className="font-heading font-bold text-lg">Offert</h1>
-                <p className="text-sm text-muted-foreground">Till: {quote.customer_name}</p>
+          <CardContent className="p-6 sm:p-8">
+
+            {/* Company header — name + contact info left, logo right */}
+            <div className="flex justify-between items-start gap-4 mb-3">
+              <div className="flex-1 min-w-0">
+                {branding?.name ? (
+                  <h2 className="font-heading text-xl font-bold text-primary mb-1.5 leading-tight">
+                    {branding.name}
+                  </h2>
+                ) : (
+                  <h2 className="font-heading text-xl font-bold text-primary mb-1.5 leading-tight">
+                    Offert
+                  </h2>
+                )}
+                {brandingDetails.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {brandingDetails.join('   ·   ')}
+                  </p>
+                )}
               </div>
-              <div className="text-right text-xs text-muted-foreground">
-                <p>Datum: {formatDate(quote.created_at)}</p>
-                {quote.valid_until && <p>Giltig till: {formatDate(quote.valid_until)}</p>}
-              </div>
+              {branding?.logo_url && (
+                <img
+                  src={branding.logo_url}
+                  alt={branding.name || 'Logo'}
+                  className="h-12 sm:h-14 w-auto object-contain shrink-0"
+                />
+              )}
             </div>
 
-            <div className="border rounded-lg overflow-hidden mb-4">
-              {items.map((item: any) => {
+            {/* Divider under company header */}
+            <div className="h-px bg-stone-300 mb-5" />
+
+            {/* OFFERT title + dates */}
+            <div className="flex justify-between items-end mb-1 gap-3">
+              <h1 className="font-heading text-3xl font-bold tracking-tight">OFFERT</h1>
+              <p className="text-xs text-muted-foreground">Datum: {formatDate(quote.created_at)}</p>
+            </div>
+            <div className="flex justify-between items-start mb-6 gap-3">
+              <p className="text-sm text-muted-foreground">{quote.customer_name}</p>
+              {quote.valid_until && (
+                <p className="text-xs text-muted-foreground">Giltig till: {formatDate(quote.valid_until)}</p>
+              )}
+            </div>
+
+            {/* KUND box */}
+            {customerLines.length > 0 && (
+              <div className="mb-6 rounded border border-stone-200 bg-stone-50 px-4 py-3 max-w-xs">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Kund
+                </p>
+                {customerLines[0] && <p className="font-semibold text-sm">{customerLines[0]}</p>}
+                {customerLines.slice(1).map((line, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* ARBETSRADER header */}
+            <div className="mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Arbetsrader ({items.length})
+              </p>
+              <div className="h-px bg-stone-200 mt-1.5" />
+            </div>
+
+            {/* Items list */}
+            <div className="mb-6">
+              {items.map((item: any, idx: number) => {
                 const mats = item.quote_item_materials || [];
                 const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unit_price, 0);
+                const laborTotal = item.quantity * item.unit_price;
+                const itemTotal = laborTotal + matsTotal;
                 return (
-                  <div key={item.id} className="border-b last:border-b-0 p-3">
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>{item.description}</span>
-                      <span>{formatCurrency(item.quantity * item.unit_price + matsTotal)}</span>
+                  <div key={item.id} className={`pt-3 pb-3 ${idx > 0 ? 'border-t border-stone-100' : ''}`}>
+                    <div className="flex justify-between gap-4 mb-1">
+                      <p className="font-semibold text-sm">{item.description}</p>
+                      <p className="font-semibold text-sm shrink-0">{formatCurrency(itemTotal)}</p>
                     </div>
                     {item.unit_price > 0 && (
-                      <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
+                      <div className="flex justify-between text-xs text-muted-foreground pl-3 mb-0.5">
                         <span>Arbete</span>
-                        <span>{formatCurrency(item.quantity * item.unit_price)}</span>
+                        <span>{formatCurrency(laborTotal)}</span>
                       </div>
                     )}
-                    {mats.length > 0 &&
-                      mats.map((m: any) => (
-                        <div key={m.id} className="flex justify-between text-xs text-muted-foreground mt-0.5 pl-3">
-                          <span>{m.quantity} × {m.name}</span>
-                          <span>{formatCurrency(m.quantity * m.unit_price)}</span>
-                        </div>
-                      ))}
+                    {mats.map((m: any) => (
+                      <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-5 mb-0.5">
+                        <span className="truncate pr-2">{m.quantity} × {m.name}</span>
+                        <span className="shrink-0">{formatCurrency(m.quantity * m.unit_price)}</span>
+                      </div>
+                    ))}
                   </div>
                 );
               })}
             </div>
 
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Delsumma</span>
+            {/* Summary — right-aligned */}
+            <div className="ml-auto max-w-xs space-y-1 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Delsumma</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Moms (25%)</span>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Moms (25%)</span>
                 <span>{formatCurrency(vat)}</span>
               </div>
-              <div className="flex justify-between font-heading font-bold text-xl border-t pt-2">
+              <div className="h-[1.5px] bg-stone-700 my-1.5" />
+              <div className="flex justify-between font-bold text-base">
                 <span>Totalt inkl. moms</span>
                 <span>{formatCurrency(total)}</span>
               </div>
             </div>
 
+            {/* Notes + estimated time */}
+            {(quote.notes || (quote as any).estimated_days || (quote as any).estimated_hours) && (
+              <>
+                <div className="h-px bg-stone-100 my-5" />
+                {((quote as any).estimated_days || (quote as any).estimated_hours) && (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    <span className="font-medium">Beräknad arbetstid:</span>{' '}
+                    {[
+                      (quote as any).estimated_days > 0 ? `${(quote as any).estimated_days} dagar` : null,
+                      (quote as any).estimated_hours > 0 ? `${(quote as any).estimated_hours} timmar` : null,
+                    ].filter(Boolean).join(', ')}
+                  </p>
+                )}
+                {quote.notes && (
+                  <p className="text-xs text-muted-foreground italic leading-relaxed">{quote.notes}</p>
+                )}
+              </>
+            )}
+
+            {/* Brand footer with bankgiro */}
+            <div className="mt-8 pt-4 border-t border-stone-100 flex items-center justify-between text-[10px] text-stone-400">
+              <span>Quotly — Professional Quotes for Tradespeople</span>
+              {branding?.bankgiro && (
+                <span className="text-muted-foreground">Bankgiro: {branding.bankgiro}</span>
+              )}
+            </div>
+
+            {/* PDF download */}
             <Button
               variant="outline"
               size="sm"
-              className="w-full mt-3 gap-2 text-muted-foreground"
+              className="w-full mt-4 gap-2 text-muted-foreground"
               onClick={handleDownloadPdf}
               disabled={downloadingPdf}
             >
               {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingPdf ? 'Genererar PDF...' : 'Ladda ner som PDF'}
             </Button>
-
-            {((quote as any).estimated_days || (quote as any).estimated_hours) && (
-              <p className="mt-3 text-sm">
-                <span className="text-muted-foreground">Beräknad arbetstid:</span>{' '}
-                {[
-                  (quote as any).estimated_days > 0 ? `${(quote as any).estimated_days} dagar` : null,
-                  (quote as any).estimated_hours > 0 ? `${(quote as any).estimated_hours} timmar` : null,
-                ].filter(Boolean).join(', ')}
-              </p>
-            )}
-            {quote.notes && <p className="mt-3 text-sm text-muted-foreground italic">{quote.notes}</p>}
           </CardContent>
         </Card>
 
@@ -297,10 +399,12 @@ export default function CustomerView() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={2}
+              disabled={isPreview}
             />
             <Button
               className="w-full h-14 text-lg font-heading font-bold gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
               onClick={handleAccept}
+              disabled={isPreview}
             >
               <Check className="h-5 w-5" /> {isRevised ? 'Godkänn ändringarna' : 'Acceptera offert'}
             </Button>
@@ -308,10 +412,15 @@ export default function CustomerView() {
               variant="outline"
               className="w-full gap-2 text-destructive hover:text-destructive"
               onClick={handleDecline}
+              disabled={isPreview}
             >
               <X className="h-4 w-4" /> {isRevised ? 'Neka ändringarna' : 'Neka offert'}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">Genom att acceptera godkänner du villkoren i offerten</p>
+            <p className="text-xs text-center text-muted-foreground">
+              {isPreview
+                ? 'Knapparna är inaktiva i förhandsgranskningen.'
+                : 'Genom att acceptera godkänner du villkoren i offerten'}
+            </p>
           </CardContent>
         </Card>
 

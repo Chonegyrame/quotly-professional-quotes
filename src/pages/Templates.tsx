@@ -297,7 +297,6 @@ export default function Templates() {
                       key={material.id}
                       material={material}
                       availableMaterials={filteredMaterials}
-                      pricingMode="detailed"
                       onChange={(updated) => updateMaterialRow(material.id, updated)}
                       onRemove={() => removeMaterialRow(material.id)}
                     />

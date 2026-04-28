@@ -18,6 +18,7 @@ import { mockQuotes, formatCurrency, formatDate, isReminderDue } from '@/data/mo
 import { toast } from 'sonner';
 import { useCompany } from '@/hooks/useCompany';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
+import { CustomerViewPreviewDialog } from '@/components/CustomerViewPreviewDialog';
 import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE } from '@/lib/emailTemplate';
 
 export default function QuoteDetail() {
@@ -26,6 +27,7 @@ export default function QuoteDetail() {
   const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, deleteQuote } = useQuotes();
   const { company } = useCompany();
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [actualHoursInput, setActualHoursInput] = useState<number | ''>('');
@@ -247,10 +249,8 @@ export default function QuoteDetail() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <a href={`/q/${quote.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 cursor-pointer">
-                <ExternalLink className="h-4 w-4" /> Offert kundvy
-              </a>
+            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setPreviewOpen(true)}>
+              <ExternalLink className="h-4 w-4" /> Offert kundvy
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 cursor-pointer" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
               <CopyPlus className="h-4 w-4" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicera'}
@@ -422,6 +422,12 @@ export default function QuoteDetail() {
           </CardContent>
         </Card>
       )}
+
+      <CustomerViewPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        quoteId={quote.id}
+      />
 
       <SendQuoteModal
         open={sendModalOpen}
