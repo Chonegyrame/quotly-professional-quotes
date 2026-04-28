@@ -8,6 +8,7 @@ const tradeLinks = [
   { label: 'VVS', to: '/vvs' },
   { label: 'El', to: '/el' },
   { label: 'Övrigt', to: '/ovrigt' },
+  { label: 'Pris', to: '/pris', divider: true },
 ];
 
 export function TradeMenu() {
@@ -34,14 +35,16 @@ export function TradeMenu() {
             className="absolute right-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-stone-100 bg-white shadow-lg"
           >
             {tradeLinks.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                className="flex items-center px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-stone-50 hover:text-accent"
-              >
-                {item.label}
-              </Link>
+              <div key={item.to}>
+                {item.divider && <div className="border-t border-stone-100" />}
+                <Link
+                  to={item.to}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-stone-50 hover:text-accent"
+                >
+                  {item.label}
+                </Link>
+              </div>
             ))}
           </motion.div>
         )}

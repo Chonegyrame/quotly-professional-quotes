@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FlipDeckSection } from '@/components/FlipDeck/FlipDeckSection';
+import { Stamp } from '@/components/FlipDeck/atoms/Stamp';
+import { Footer } from '@/components/Footer';
 import { LeadBox } from '@/components/LeadBox';
 import { LearningSlot } from '@/components/LearningSlot';
 import {
@@ -22,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TradeMenu } from '@/components/TradeMenu';
+import { MarketingHeader } from '@/components/MarketingHeader';
 import { showcaseItems, type ShowcaseItem } from '@/data/showcaseData';
 
 /* ------------------------------------------------------------------ */
@@ -63,43 +66,6 @@ function FadeIn({
   );
 }
 
-function StaggerChildren({
-  children,
-  className = '',
-  staggerDelay = 0.1,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  staggerDelay?: number;
-}) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-60px' });
-
-  return (
-    <motion.div
-      ref={ref}
-      initial="hidden"
-      animate={inView ? 'visible' : 'hidden'}
-      variants={{
-        hidden: {},
-        visible: { transition: { staggerChildren: staggerDelay } },
-      }}
-      className={className}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-const staggerItem = {
-  hidden: { opacity: 0, y: 30 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: [0.25, 0.4, 0, 1] },
-  },
-};
-
 /** Scroll-driven typewriter: reveals text character by character based on a MotionValue (0→1) */
 function ScrollTypeWriter({
   text,
@@ -131,24 +97,6 @@ function ScrollTypeWriter({
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
 /* ------------------------------------------------------------------ */
-
-const steps = [
-  {
-    step: '1',
-    title: 'Beskriv jobbet',
-    description: 'Skriv en kort beskrivning eller låt AI:n tolka en förfrågan åt dig.',
-  },
-  {
-    step: '2',
-    title: 'Granska & justera',
-    description: 'Finjustera rader, priser och material. Lägg till din egen touch.',
-  },
-  {
-    step: '3',
-    title: 'Skicka & följ upp',
-    description: 'Skicka med ett klick. Se när kunden öppnar och svarar.',
-  },
-];
 
 /* ------------------------------------------------------------------ */
 /*  Feature overlay (expands from showcase card)                       */
@@ -581,16 +529,6 @@ export default function LandingPage() {
   const selectedItem = selectedFeature ? showcaseItems.find((s) => s.id === selectedFeature) : null;
 
   const showcaseRef = useRef(null);
-  // FlipDeck exit: shrink/fade starts BEFORE dark is visible, card 4 barely moves,
-  // stays peeking out the top even when dark covers 80% of the viewport
-  const flipDeckRef = useRef(null);
-  const { scrollYProgress: flipDeckProgress } = useScroll({
-    target: flipDeckRef,
-    offset: ['end 97%', 'end 20%'],
-  });
-  const flipDeckTranslateY = useTransform(flipDeckProgress, [0, 1], [0, 590]);
-  const flipDeckScale = useTransform(flipDeckProgress, [0, 1], [1, 0.86]);
-  const flipDeckOpacity = useTransform(flipDeckProgress, [0, 0.7], [1, 0.55]);
 
   // Dark section: normal scroll speed — looks fast relative to barely-moving card 4
   const darkFoldRef = useRef(null);
@@ -631,6 +569,20 @@ export default function LandingPage() {
   const quoteRevealProgress = useMotionValue(0);
   const learningReveal = useMotionValue(0);
   const generateBtnScale = useMotionValue(1);
+
+  // Text-block opacities. Box 1 stays tied to its reveal progress (since
+  // leadBoxReveal already has BOX1_EARLY_PX offset, it starts before the
+  // pin engages). Boxes 2 and 3 are decoupled from content reveal and
+  // driven by scroll position during their *approach phase* — text fades
+  // in while the box is still travelling up to its freeze position, so
+  // it's fully readable before the box even lands.
+  const text1Opacity = useTransform(leadBoxReveal, [0.05, 0.5], [0, 1]);
+  const text2Opacity = useMotionValue(0);
+  const text3Opacity = useMotionValue(0);
+  // FlipDeck wrapper — marginTop computed in rebuild() (mount + resize only,
+  // never per scroll) so it lands 150 px below Box 3 at the moment the sticky
+  // pin un-sticks. No per-frame JS = no jitter.
+  const flipDeckRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const driver = driverRef.current;
@@ -698,8 +650,13 @@ export default function LandingPage() {
       freeze1Px: number; freeze2Px: number; freeze3Px: number;
       offBox1: number; offBox2: number; offBox3: number;
       offEnterStart: number; offExitEnd: number;
+      b3LocalBottom: number;
     };
     let phases: Phases | null = null;
+    // Once the user has scrolled past the end of the section, hold the line
+    // and reveal motion values at their final state — even if they scroll back
+    // up. Box positions still follow scroll so the section stays viewable.
+    let hasCompleted = false;
 
     const rebuild = () => {
       const w = stack.offsetWidth;
@@ -742,19 +699,36 @@ export default function LandingPage() {
       const T6 = T5 + freeze3Px;
       const T7 = T6 + computedLeavePx;
 
+      const b3r = localRect(b3);
+      const b3LocalBottom = b3r.y + b3r.h;
+
       phases = {
         T1, T2, T3, T4, T5, T6, T7,
         freeze1Px, freeze2Px, freeze3Px,
         offBox1, offBox2, offBox3, offEnterStart, offExitEnd,
+        b3LocalBottom,
       };
 
       driver.style.height = T7 + 'px';
+
+      // FlipDeck marginTop: position it so its top edge lands exactly
+      // FLIPDECK_GAP_PX below Box 3's bottom at the moment the sticky pin
+      // un-sticks (scrolled = T7 - vh). After unstick, both move with the
+      // document at 1:1, so the gap stays constant through LEAVE with zero JS.
+      // Math: at unstick, FlipDeck.viewportTop = vh + marginTop and
+      //       Box3.viewportBottom = FREEZE_Y_FRAC*vh + box3.height.
+      const FLIPDECK_GAP_PX = 60;
+      const box3Height = b3.offsetHeight;
+      const flipDeckMarginTop = (FREEZE_Y_FRAC * vh + box3Height + FLIPDECK_GAP_PX) - vh;
+      if (flipDeckRef.current) {
+        flipDeckRef.current.style.marginTop = flipDeckMarginTop + 'px';
+      }
     };
 
     const update = () => {
       if (!phases) return;
       const dRect = driver.getBoundingClientRect();
-      const scrolled = -dRect.top;
+      let scrolled = -dRect.top;
       const {
         T1, T2, T3, T4, T5, T6, T7,
         freeze1Px, freeze2Px, freeze3Px,
@@ -792,44 +766,95 @@ export default function LandingPage() {
         stackY = offExitEnd; t1 = 1; t2 = 1;
       }
 
+      // Latch hasCompleted as soon as Box 3's reveal animation finishes
+      // (mid-FREEZE 3, where learningReveal hits 1). After this, line + reveal
+      // values stay locked at full and the stack glides through a 2-piece
+      // linear path that matches the original positions at 0, latchPoint, and
+      // T7 — so no jump at the latch moment. No driver-shrink and no scrollBy:
+      // those were causing FlipDeck below to jump 75px at the latch instant.
+      const latchPoint = T5 + freeze3Px / 2;
+      if (scrolled >= latchPoint) hasCompleted = true;
+      if (hasCompleted) {
+        t1 = 1;
+        t2 = 1;
+        if (scrolled <= latchPoint) {
+          stackY = lerp(offEnterStart, offBox3, clamp(scrolled / latchPoint));
+        } else {
+          stackY = lerp(offBox3, offExitEnd, clamp((scrolled - latchPoint) / (T7 - latchPoint)));
+        }
+      }
+
       stack.style.transform = `translate3d(0, ${stackY}px, 0)`;
       f1.style.strokeDashoffset = String(bar1.total * (1 - clamp(t1)));
       f2.style.strokeDashoffset = String(bar2.total * (1 - clamp(t2)));
 
-      // Content reveal windows for each box's progress MotionValue.
-      // Box 1 starts revealing 400px BEFORE the pin engages so the rows are
-      // already filling in as the box enters from below — not waiting for it
-      // to land at the freeze line.
+      if (hasCompleted) {
+        leadBoxReveal.set(1);
+        quoteRevealProgress.set(1);
+        learningReveal.set(1);
+        generateBtnScale.set(1);
+        text2Opacity.set(1);
+        text3Opacity.set(1);
+        return;
+      }
+
+      // Approach lengths — used by both text fades and content reveals.
+      const box2ApproachLen = T3 - T2;
+      const box3ApproachLen = T5 - T4;
+
+      // Box 1 reveal — starts BEFORE the pin engages so rows are already
+      // filling in as the box enters from below.
       const BOX1_EARLY_PX = 400;
       const box1End = T1 + freeze1Px / 2;
       leadBoxReveal.set(clamp((scrolled + BOX1_EARLY_PX) / (box1End + BOX1_EARLY_PX)));
 
-      // Box 2 reveal starts AFTER the "Generera offert" button press
-      // completes (T3 + 0.1*freeze2Px), so the press visually triggers the
-      // typing rather than overlapping with it.
-      const box2Start = T3 + freeze2Px * 0.1;
-      const box2End = T3 + freeze2Px * 0.64;
-      quoteRevealProgress.set(clamp((scrolled - box2Start) / (box2End - box2Start)));
+      // Text fades for boxes 2 and 3 — driven by approach phase. Text
+      // starts fading in around 40% through the approach (box well into
+      // viewport) and is fully readable by 90% (just before freeze).
+      const TEXT_APPROACH_START = 0.4;
+      const TEXT_APPROACH_END = 0.9;
+      const text2Start = T2 + box2ApproachLen * TEXT_APPROACH_START;
+      const text2End = T2 + box2ApproachLen * TEXT_APPROACH_END;
+      text2Opacity.set(clamp((scrolled - text2Start) / (text2End - text2Start)));
 
-      const box3End = T5 + freeze3Px / 2;
-      learningReveal.set(clamp((scrolled - T5) / (box3End - T5)));
+      const text3Start = T4 + box3ApproachLen * TEXT_APPROACH_START;
+      const text3End = T4 + box3ApproachLen * TEXT_APPROACH_END;
+      text3Opacity.set(clamp((scrolled - text3Start) / (text3End - text3Start)));
 
-      // "Generera offert" button press — quick dip at the start of FREEZE 2.
-      const btnStart = T3;
-      const btnDur = freeze2Px * 0.1;
+      // Box 2 "Generera offert" button press — fires well before box 2
+      // reaches freeze (T3) so it visually punctuates the moment Quotly
+      // takes over, with a clear gap before bar 2 starts drawing.
+      // PRE_FREEZE_GAP = how many px of scroll between end-of-press
+      // and T3. Bigger value = earlier press.
+      const PRE_FREEZE_GAP = 200;
+      const box2BtnDur = freeze2Px * 0.1;
+      const box2BtnStart = T3 - PRE_FREEZE_GAP - box2BtnDur;
       let btnScale = 1;
-      if (scrolled > btnStart && scrolled < btnStart + btnDur) {
-        const u = (scrolled - btnStart) / btnDur;
+      if (scrolled > box2BtnStart && scrolled < box2BtnStart + box2BtnDur) {
+        const u = (scrolled - box2BtnStart) / box2BtnDur;
         btnScale = lerp(1, 0.78, Math.sin(u * Math.PI));
       }
       generateBtnScale.set(btnScale);
+
+      // Box 2 typing — starts the moment the button press completes.
+      const box2ContentStart = box2BtnStart + box2BtnDur;
+      const box2ContentEnd = box2ContentStart + freeze2Px * 0.54;
+      quoteRevealProgress.set(clamp((scrolled - box2ContentStart) / (box2ContentEnd - box2ContentStart)));
+
+      // Box 3 reveal — starts PRE_FREEZE_GAP px before T5, mirroring
+      // the box 2 cascade (box 2 content starts PRE_FREEZE_GAP before T3).
+      // Same scroll-distance lead-in for both boxes.
+      const box3ContentStart = T5 - PRE_FREEZE_GAP;
+      const box3ContentEnd = T5 + freeze3Px / 2;
+      learningReveal.set(clamp((scrolled - box3ContentStart) / (box3ContentEnd - box3ContentStart)));
     };
 
-    let rafId: number | null = null;
-    const onScroll = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => { rafId = null; update(); });
-    };
+    // Synchronous scroll handler — no rAF wrapping. The browser fires scroll
+    // events as part of the rendering pipeline before paint, so setting
+    // transforms here lands in the same paint cycle. Wrapping in
+    // requestAnimationFrame defers to the *next* frame and produces the
+    // visible 1-tick lag we just removed.
+    const onScroll = () => update();
     const onResize = () => { rebuild(); update(); };
 
     rebuild();
@@ -840,50 +865,16 @@ export default function LandingPage() {
     ro.observe(stack);
 
     return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
       ro.disconnect();
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
-  }, [leadBoxReveal, quoteRevealProgress, learningReveal, generateBtnScale]);
+  }, [leadBoxReveal, quoteRevealProgress, learningReveal, generateBtnScale, text2Opacity, text3Opacity]);
 
 
   return (
     <div className="min-h-screen bg-white text-foreground" style={{ overflowX: 'clip' }}>
-      {/* Header */}
-      <motion.header
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, ease: [0.25, 0.4, 0, 1] }}
-        className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md"
-      >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-              <FileText className="h-5 w-5 text-white" />
-            </div>
-            <span className="font-heading text-xl font-bold text-foreground">Quotly</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                <Button variant="ghost" size="sm" className="text-sm font-medium">
-                  Logga in
-                </Button>
-              </motion.div>
-            </Link>
-            <Link to="/auth?signup=true">
-              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                <Button size="sm" className="gap-1.5 bg-accent text-white hover:bg-accent/90">
-                  Kom igång gratis
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </motion.div>
-            </Link>
-            <TradeMenu />
-          </div>
-        </div>
-      </motion.header>
+      <MarketingHeader />
 
       {/* ── Split Hero ── */}
       <section className="relative h-[calc(100vh-4rem)] overflow-hidden">
@@ -936,16 +927,6 @@ export default function LandingPage() {
         {/* Text content — sits above both layers, constrained to the grey area */}
         <div className="absolute inset-0 flex items-center">
           <div className="w-[50%] px-10 sm:px-14 lg:px-20">
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.4, 0, 1] }}
-              className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm font-medium text-accent"
-            >
-              <Sparkles className="h-4 w-4" />
-              Nu med AI-genererade offerter
-            </motion.div>
-
             <motion.h1
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -962,7 +943,7 @@ export default function LandingPage() {
               transition={{ duration: 0.7, delay: 0.4, ease: [0.25, 0.4, 0, 1] }}
               className="mt-4 text-base text-stone-300 sm:text-lg"
             >
-              Quotly hjälper hantverkare att skapa, skicka och följa upp offerter — snabbt, snyggt och utan krångel.
+              Quotly hjälper hantverkare att skapa, skicka och följa upp offerter åt sina kunder. Det individuella lärandesystemet lär sig din firma på djupet och genererar starka offerter på sekunder.
             </motion.p>
 
             <motion.div
@@ -1042,7 +1023,7 @@ export default function LandingPage() {
                 Bättre leads. <span className="text-accent">Snabbare offerter.</span> Nöjdare kunder.
               </h2>
               <p className="mx-auto mt-5 max-w-3xl text-lg text-muted-foreground">
-                Quotly sköter hela kedjan — sållar bort dåliga förfrågningar, skriver offerten åt dig och följer upp svaren automatiskt.
+                Quotly sköter hela kedjan, från att sortera bort dåliga förfrågningar till att skriva offerten och följa upp svaren.
               </p>
             </div>
           </FadeIn>
@@ -1095,18 +1076,36 @@ export default function LandingPage() {
                 />
               </svg>
 
-              <div className="flex w-full" style={{ position: 'relative', zIndex: 2 }}>
+              {/* Box 1 — text on right */}
+              <div className="flex w-full items-center gap-12" style={{ position: 'relative', zIndex: 2 }}>
                 <div
                   ref={box1Ref}
                   className="relative aspect-[4/3] w-[55%]"
                 >
                   <LeadBox progress={leadBoxReveal} />
                 </div>
+                <motion.div className="flex-1 pr-4" style={{ opacity: text1Opacity }}>
+                  <h3 className="mb-3 font-heading text-2xl font-bold text-foreground sm:text-3xl">
+                    Färre tidstjuvar i inkorgen.
+                  </h3>
+                  <p className="text-base leading-relaxed text-muted-foreground sm:text-lg">
+                    Quotly läser varje ny förfrågan och poängsätter den efter hur konkret den är, om kunden lämnat det du behöver för att räkna, och om jobbet passar din verksamhet. Du svarar på de som faktiskt blir affär.
+                  </p>
+                </motion.div>
               </div>
 
               <div style={{ height: 320 }} aria-hidden />
 
-              <div className="flex w-full justify-end" style={{ position: 'relative', zIndex: 2 }}>
+              {/* Box 2 — text on left */}
+              <div className="flex w-full items-center gap-12" style={{ position: 'relative', zIndex: 2 }}>
+                <motion.div className="flex-1 pl-4" style={{ opacity: text2Opacity }}>
+                  <h3 className="mb-3 font-heading text-2xl font-bold text-foreground sm:text-3xl">
+                    Skriv beskrivningen. Få hela offerten.
+                  </h3>
+                  <p className="text-base leading-relaxed text-muted-foreground sm:text-lg">
+                    Klistra in kundens förfrågan eller skriv ett par rader själv. Quotly tolkar texten, plockar rätt material och arbete från din egen prislista och fyller offerten åt dig. Du justerar det som behövs och skickar.
+                  </p>
+                </motion.div>
                 <div
                   ref={box2Ref}
                   className="relative aspect-[4/3] w-[55%]"
@@ -1117,26 +1116,39 @@ export default function LandingPage() {
 
               <div style={{ height: 320 }} aria-hidden />
 
-              <div className="flex w-full" style={{ position: 'relative', zIndex: 2 }}>
+              {/* Box 3 — text on right */}
+              <div className="flex w-full items-center gap-12" style={{ position: 'relative', zIndex: 2 }}>
                 <div
                   ref={box3Ref}
                   className="relative aspect-[4/3] w-[55%]"
                 >
                   <LearningSlot progress={learningReveal} />
                 </div>
+                <motion.div className="flex-1 pr-4" style={{ opacity: text3Opacity }}>
+                  <h3 className="mb-3 font-heading text-2xl font-bold text-foreground sm:text-3xl">
+                    Lärsystemet som anpassar sig efter ditt jobb.
+                  </h3>
+                  <p className="text-base leading-relaxed text-muted-foreground sm:text-lg">
+                    Quotly följer vad du fakturerar, vilka rader du lägger till manuellt och hur dina priser förändras över tid. Nästa offert hamnar närmare det du själv skulle ha skrivit.
+                  </p>
+                </motion.div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* FlipDeck: card 4 barely moves as dark section rises over it */}
-      <motion.div
-        ref={flipDeckRef}
-        style={{ translateY: flipDeckTranslateY, scale: flipDeckScale, opacity: flipDeckOpacity }}
-      >
+      {/* FlipDeck: marginTop set in rebuild() (mount + resize only) so it
+          enters the viewport exactly when the sticky pin un-sticks, landing
+          FLIPDECK_GAP_PX below Box 3. From there both scroll naturally with
+          the page, so the gap stays constant with zero per-frame JS.
+          `relative` is required so this wrapper paints ON TOP of the driver
+          above (driver is `position: relative` for its noise overlay; without
+          a position here, the driver's cream background paints over our
+          heading where they overlap via the negative marginTop). */}
+      <div ref={flipDeckRef} className="relative">
         <FlipDeckSection />
-      </motion.div>
+      </div>
 
       <div ref={darkFoldRef} className="relative z-20" style={{ perspective: '1000px' }}>
         {/* Showcase — normal scroll speed, covers nearly-stationary card 4 */}
@@ -1193,73 +1205,117 @@ export default function LandingPage() {
       </motion.section>
       </div>
 
-      {/* How it works */}
-      <section className="bg-stone-50/70 py-20 sm:py-24">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6">
-          <FadeIn>
-            <div className="mx-auto max-w-2xl text-center">
-              <h2 className="font-heading text-3xl font-bold text-foreground sm:text-4xl">
-                Så enkelt fungerar det
-              </h2>
-              <p className="mt-4 text-lg text-muted-foreground">
-                Tre steg från förfrågan till skickad offert.
-              </p>
-            </div>
-          </FadeIn>
+      {/* CTA — meta-quote: Quotly's offer to the visitor, styled as an
+          actual quote document. Same paper/border/shadow vocabulary as
+          the FlipDeck back-cards so it feels brand-native, but a different
+          concept (this is an OFFER, not a job ticket). */}
+      <section className="relative overflow-hidden py-24 sm:py-32" style={{ backgroundColor: '#F8F6F3' }}>
+        {/* paper grain background */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat',
+            opacity: 0.08,
+          }}
+        />
 
-          <StaggerChildren className="mt-14 grid gap-8 sm:grid-cols-3" staggerDelay={0.15}>
-            {steps.map(({ step, title, description }) => (
-              <motion.div key={step} variants={staggerItem} className="text-center">
-                <motion.div
-                  whileHover={{ scale: 1.1, rotate: 5 }}
-                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent text-white font-heading text-lg font-bold shadow-md shadow-accent/25"
-                >
-                  {step}
-                </motion.div>
-                <h3 className="mt-4 font-heading text-lg font-semibold text-foreground">{title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{description}</p>
-              </motion.div>
-            ))}
-          </StaggerChildren>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-20 sm:py-28">
         <FadeIn>
-          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-            <h2 className="font-heading text-3xl font-bold text-foreground sm:text-4xl">
-              Redo att slippa krångliga offerter?
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Kom igång gratis och skapa din första offert på under 5 minuter.
-            </p>
-            <motion.div className="mt-8" whileHover={{ scale: 1.02 }}>
-              <Link to="/auth?signup=true">
-                <Button size="lg" className="gap-2 bg-accent text-white hover:bg-accent/90 px-8 text-base shadow-lg shadow-accent/25">
-                  Skapa konto
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-              </Link>
-            </motion.div>
+          <div className="relative mx-auto max-w-[680px] px-4 sm:px-6">
+            <div
+              className="relative overflow-hidden rounded-lg border-[1.5px] border-stone-900 bg-[#fdfaf4] px-8 py-8 sm:px-12 sm:py-10"
+              style={{ boxShadow: '4px 4px 0 #16140f' }}
+            >
+              {/* card paper grain (radial dots) */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  backgroundImage: 'radial-gradient(circle, rgba(22,20,15,0.05) 1px, transparent 1.2px)',
+                  backgroundSize: '14px 14px',
+                }}
+              />
+
+              {/* Header row */}
+              <div className="relative flex items-center gap-2.5 border-b border-dashed border-stone-300 pb-4">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-stone-900">
+                  <FileText className="h-4 w-4 text-white" />
+                </div>
+                <span className="font-heading text-base font-bold text-stone-900">Quotly</span>
+                <Stamp orange className="ml-auto">OFFERT TILL DIG</Stamp>
+              </div>
+
+              {/* ATT FÅ */}
+              <div className="relative mt-5">
+                <div className="mb-2.5 font-display text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">
+                  Att få
+                </div>
+                <ul className="space-y-1.5 text-stone-900">
+                  {[
+                    'Eget Quotly-konto',
+                    'AI-genererade offerter med ROT',
+                    'Materialbank med automatiskt påslag',
+                    'Uppföljning, PDF och kundvy',
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-baseline gap-2.5 text-[16px]">
+                      <span className="font-bold text-orange-600">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* ATT BETALA */}
+              <div className="relative mt-6">
+                <div className="mb-2 font-display text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">
+                  Att betala
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <div className="font-display text-[44px] font-extrabold leading-none tabular-nums text-stone-900">
+                    0 kr
+                  </div>
+                  <div className="font-mono text-sm text-stone-500">
+                    ingen kortuppgift krävs
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="relative mt-7 border-t border-dashed border-stone-300" />
+
+              {/* CTAs — primary (signup) on the left, secondary (pricing)
+                  pushed to the right edge with the same button styling. */}
+              <div className="relative mt-6 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:gap-7">
+                <Link to="/auth?signup=true">
+                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button
+                      size="lg"
+                      className="gap-2 rounded-md border-2 border-stone-900 bg-stone-900 px-7 text-base font-semibold text-white hover:bg-stone-800"
+                      style={{ boxShadow: '3px 3px 0 #c85a1f' }}
+                    >
+                      Starta gratis
+                      <ArrowRight className="h-5 w-5" />
+                    </Button>
+                  </motion.div>
+                </Link>
+                <Link to="/pris">
+                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button
+                      size="lg"
+                      className="gap-2 rounded-md border-2 border-stone-900 bg-stone-900 px-7 text-base font-semibold text-white hover:bg-stone-800"
+                      style={{ boxShadow: '3px 3px 0 #c85a1f' }}
+                    >
+                      Se prisplaner
+                      <ArrowRight className="h-5 w-5" />
+                    </Button>
+                  </motion.div>
+                </Link>
+              </div>
+            </div>
           </div>
         </FadeIn>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-stone-200 bg-stone-50 py-8">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-                <FileText className="h-4 w-4 text-white" />
-              </div>
-              <span className="font-heading text-sm font-bold text-foreground">Quotly</span>
-            </div>
-            <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Quotly. Alla rättigheter förbehållna.</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
 
       {/* Feature overlay */}
       <AnimatePresence>

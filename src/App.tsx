@@ -2,6 +2,7 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AnimatePresence, LayoutGroup } from "framer-motion";
 import { Navbar } from "./components/Navbar";
@@ -22,14 +23,28 @@ import ResetPassword from "./pages/ResetPassword";
 import CompanySetup from "./pages/CompanySetup";
 import AcceptInvite from "./pages/AcceptInvite";
 import LandingPage from "./pages/LandingPage";
-import FeatureDetail from "./pages/FeatureDetail";
 import TradePage from "./pages/TradePage";
+import OvrigtPage from "./pages/OvrigtPage";
+import ByggPage from "./pages/ByggPage";
+import PricingPage from "./pages/PricingPage";
+import AnvandarvillkorPage from "./pages/AnvandarvillkorPage";
+import FragorOchSvarPage from "./pages/FragorOchSvarPage";
+import VvsPage from "./pages/VvsPage";
+import ElPage from "./pages/ElPage";
 import IncomingRequestForm from "./pages/IncomingRequestForm";
 import Inbox from "./pages/Inbox";
 import IncomingRequestDetail from "./pages/IncomingRequestDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -66,7 +81,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user } = useAuth();
   const tradeRoutes = ['/bygg', '/vvs', '/el', '/ovrigt'];
-  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/features') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/') || tradeRoutes.includes(location.pathname);
+  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/') || location.pathname === '/pris' || location.pathname === '/anvandarvillkor' || location.pathname === '/fragor-och-svar' || tradeRoutes.includes(location.pathname);
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -94,11 +109,13 @@ function AppRoutes() {
         <Route path="/invite/:token" element={<AcceptInvite />} />
         <Route path="/setup" element={<ProtectedRoute><CompanySetup /></ProtectedRoute>} />
         <Route path="/" element={<HomeRoute />} />
-        <Route path="/features/:id" element={<FeatureDetail />} />
-        <Route path="/bygg" element={<TradePage />} />
-        <Route path="/vvs" element={<TradePage />} />
-        <Route path="/el" element={<TradePage />} />
-        <Route path="/ovrigt" element={<TradePage />} />
+        <Route path="/bygg" element={<ByggPage />} />
+        <Route path="/vvs" element={<VvsPage />} />
+        <Route path="/el" element={<ElPage />} />
+        <Route path="/ovrigt" element={<OvrigtPage />} />
+        <Route path="/pris" element={<PricingPage />} />
+        <Route path="/anvandarvillkor" element={<AnvandarvillkorPage />} />
+        <Route path="/fragor-och-svar" element={<FragorOchSvarPage />} />
         <Route path="/quotes/new" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
         <Route path="/quotes/:id" element={<ProtectedRoute><QuoteDetail /></ProtectedRoute>} />
         <Route path="/quotes/:id/edit" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
@@ -123,6 +140,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <ScrollToTop />
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>

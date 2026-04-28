@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { ArrowRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TradeMenu } from '@/components/TradeMenu';
+import { MarketingHeader } from '@/components/MarketingHeader';
+import { Footer } from '@/components/Footer';
 
 const tradeConfig: Record<string, { label: string; description: string; color: string }> = {
   bygg: {
@@ -42,31 +44,7 @@ export default function TradePage() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-b ${config.color} text-foreground`}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-              <FileText className="h-5 w-5 text-white" />
-            </div>
-            <span className="font-heading text-xl font-bold text-foreground">Quotly</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <Button variant="ghost" size="sm" className="text-sm font-medium">
-                Logga in
-              </Button>
-            </Link>
-            <Link to="/auth?signup=true">
-              <Button size="sm" className="gap-1.5 bg-accent text-white hover:bg-accent/90">
-                Kom igång gratis
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <TradeMenu />
-          </div>
-        </div>
-      </header>
+      <MarketingHeader />
 
       {/* Hero */}
       <section className="mx-auto max-w-4xl px-4 py-24 sm:px-6 sm:py-32 text-center">
@@ -98,6 +76,8 @@ export default function TradePage() {
           </Link>
         </motion.div>
       </section>
+
+      <Footer />
     </div>
   );
 }
