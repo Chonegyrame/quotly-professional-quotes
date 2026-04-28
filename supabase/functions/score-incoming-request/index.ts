@@ -21,17 +21,19 @@ const GLOBAL_CEILING_24H = 500;
 
 // ---------- Tier thresholds ----------
 const TIER_THRESHOLDS = {
-  Hett: 75,
-  Ljummet: 45,
-  Kallt: 0,
+  "Mycket stark": 85,
+  Stark: 70,
+  Mellan: 50,
+  Svag: 0,
 } as const;
 
 type Tier = keyof typeof TIER_THRESHOLDS;
 
 function tierForScore(score: number): Tier {
-  if (score >= TIER_THRESHOLDS.Hett) return "Hett";
-  if (score >= TIER_THRESHOLDS.Ljummet) return "Ljummet";
-  return "Kallt";
+  if (score >= TIER_THRESHOLDS["Mycket stark"]) return "Mycket stark";
+  if (score >= TIER_THRESHOLDS.Stark) return "Stark";
+  if (score >= TIER_THRESHOLDS.Mellan) return "Mellan";
+  return "Svag";
 }
 
 // ---------- Tool schema for Claude ----------
@@ -115,9 +117,9 @@ const SCORE_LEAD_TOOL = {
       },
       tier: {
         type: "string",
-        enum: ["Hett", "Ljummet", "Kallt"],
+        enum: ["Mycket stark", "Stark", "Mellan", "Svag"],
         description:
-          "Tier baserat på score: 75-100=Hett, 45-74=Ljummet, 0-44=Kallt.",
+          "Tier baserat på score: 85-100=Mycket stark, 70-84=Stark, 50-69=Mellan, 0-49=Svag.",
       },
       summary: {
         type: "string",
@@ -236,9 +238,10 @@ clarity_score — hur väl förfrågan är ifylld
 - 0–29: nästan ingen information, bara fritextsvepning
 
 TIER (utifrån score)
-- Hett: 75–100
-- Ljummet: 45–74
-- Kallt: 0–44
+- Mycket stark: 85–100
+- Stark: 70–84
+- Mellan: 50–69
+- Svag: 0–49
 
 SAMMANRÄKNING
 score = round(0.45 * fit_score + 0.35 * intent_score + 0.20 * clarity_score)
@@ -265,8 +268,8 @@ Sätt "låg" om:
 Sätt "hög" när förfrågan är utförlig, bifogade bilder matchar uppdraget, och alla obligatoriska fält är konkreta.
 
 NEXT_STEP
-- skapa_offert: tier = Hett eller Ljummet OCH confidence != låg
-- artigt_avböj: tier = Kallt ELLER score < 30 ELLER jobbet ligger helt utanför firmans bransch/område
+- skapa_offert: tier = Mycket stark, Stark eller Mellan OCH confidence != låg
+- artigt_avböj: tier = Svag ELLER score < 30 ELLER jobbet ligger helt utanför firmans bransch/område
 - Vid artigt_avböj, skriv en kort suggested_message (2–3 meningar) på svenska som firman kan klistra in och skicka.
 `.trim();
 
@@ -446,9 +449,9 @@ function applyConfidenceCap(
   verdict: Verdict,
 ): { verdict: Verdict; adjusted: boolean } {
   if (verdict.confidence !== "låg") return { verdict, adjusted: false };
-  if (verdict.tier === "Hett") {
+  if (verdict.tier === "Mycket stark" || verdict.tier === "Stark") {
     return {
-      verdict: { ...verdict, tier: "Ljummet" as Tier },
+      verdict: { ...verdict, tier: "Mellan" as Tier },
       adjusted: true,
     };
   }

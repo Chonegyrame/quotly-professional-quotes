@@ -12,9 +12,10 @@ import { FlagsList } from '@/components/FlagsList';
 import { useIncomingRequest, useIncomingRequests, useGenerateQuoteFromRequest } from '@/hooks/useIncomingRequests';
 
 const tierBadgeClass: Record<string, string> = {
-  Hett: 'bg-green-100 text-green-800 border-green-200',
-  Ljummet: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  Kallt: 'bg-red-100 text-red-800 border-red-200',
+  'Mycket stark': 'bg-green-100 text-green-800 border-green-200',
+  Stark: 'bg-lime-100 text-lime-800 border-lime-200',
+  Mellan: 'bg-amber-100 text-amber-800 border-amber-200',
+  Svag: 'bg-stone-100 text-stone-700 border-stone-200',
 };
 
 export default function IncomingRequestDetail() {

@@ -47,7 +47,7 @@ export type IncomingRequest = {
   submitter_lng: number | null;
   photos: string[] | null;
   ai_score: number | null;
-  ai_tier: 'Hett' | 'Ljummet' | 'Kallt' | null;
+  ai_tier: 'Mycket stark' | 'Stark' | 'Mellan' | 'Svag' | null;
   ai_confidence: 'hög' | 'medel' | 'låg' | null;
   ai_verdict: AiVerdict | null;
   needs_human_review: boolean;

@@ -1,17 +1,18 @@
 import { useState } from 'react';
-import { Inbox as InboxIcon, Flame, Snowflake, Clock, Layers } from 'lucide-react';
+import { Flame, TrendingUp, Minus, TrendingDown, Clock, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { useIncomingRequests } from '@/hooks/useIncomingRequests';
 import { IncomingRequestCard } from '@/components/IncomingRequestCard';
 
-type Filter = 'alla' | 'Hett' | 'Ljummet' | 'Kallt' | 'obesvarade';
+type Filter = 'alla' | 'Mycket stark' | 'Stark' | 'Mellan' | 'Svag' | 'obesvarade';
 
 const filterCards: { id: Filter; label: string; icon: React.ElementType }[] = [
   { id: 'alla', label: 'Alla', icon: Layers },
-  { id: 'Hett', label: 'Hett', icon: Flame },
-  { id: 'Ljummet', label: 'Ljummet', icon: InboxIcon },
-  { id: 'Kallt', label: 'Kallt', icon: Snowflake },
+  { id: 'Mycket stark', label: 'Mycket stark', icon: Flame },
+  { id: 'Stark', label: 'Stark', icon: TrendingUp },
+  { id: 'Mellan', label: 'Mellan', icon: Minus },
+  { id: 'Svag', label: 'Svag', icon: TrendingDown },
   { id: 'obesvarade', label: 'Obesvarade', icon: Clock },
 ];
 
@@ -21,9 +22,12 @@ export default function Inbox() {
 
   const counts: Record<Filter, number> = {
     alla: requests.filter((r) => r.status !== 'dismissed').length,
-    Hett: requests.filter((r) => r.ai_tier === 'Hett' && r.status !== 'dismissed').length,
-    Ljummet: requests.filter((r) => r.ai_tier === 'Ljummet' && r.status !== 'dismissed').length,
-    Kallt: requests.filter((r) => r.ai_tier === 'Kallt' && r.status !== 'dismissed').length,
+    'Mycket stark': requests.filter(
+      (r) => r.ai_tier === 'Mycket stark' && r.status !== 'dismissed',
+    ).length,
+    Stark: requests.filter((r) => r.ai_tier === 'Stark' && r.status !== 'dismissed').length,
+    Mellan: requests.filter((r) => r.ai_tier === 'Mellan' && r.status !== 'dismissed').length,
+    Svag: requests.filter((r) => r.ai_tier === 'Svag' && r.status !== 'dismissed').length,
     obesvarade: requests.filter((r) => r.status === 'new').length,
   };
 
@@ -49,7 +53,7 @@ export default function Inbox() {
       </div>
 
       {/* Filter cards — mirrors Dashboard stat grid */}
-      <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
         {filterCards.map((f) => {
           const Icon = f.icon;
           const isActive = activeFilter === f.id;

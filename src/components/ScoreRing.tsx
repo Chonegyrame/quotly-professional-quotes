@@ -1,13 +1,16 @@
+type Tier = 'Mycket stark' | 'Stark' | 'Mellan' | 'Svag';
+
 type Props = {
   score: number | null;
-  tier: 'Hett' | 'Ljummet' | 'Kallt' | null;
+  tier: Tier | null;
   size?: number;
 };
 
-const tierColor = {
-  Hett: '#22c55e',
-  Ljummet: '#eab308',
-  Kallt: '#ef4444',
+const tierColor: Record<Tier, string> = {
+  'Mycket stark': '#16a34a', // green-600
+  Stark: '#84cc16', // lime-500
+  Mellan: '#f59e0b', // amber-500
+  Svag: '#a8a29e', // stone-400
 };
 
 export function ScoreRing({ score, tier, size = 56 }: Props) {
