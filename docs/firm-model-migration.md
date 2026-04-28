@@ -1,7 +1,7 @@
 # Firm Model Migration Plan
 
 Draft: 2026-04-22
-Status: Plan — not yet executed.
+Status: **Executed.** Chunk A (team foundation) and Chunk B (firm-scoped learning) shipped 2026-04-22 → 2026-04-23. Chunk C (Fortnox) still parked — gated on Fortnox partner approval, not on this migration.
 Target: Full migration from single-user-per-company to multi-user-per-firm, with firm-scoped AI learning.
 
 ---
