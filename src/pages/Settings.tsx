@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, Upload, ImageIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Upload, ImageIcon, Loader2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +9,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCompany } from '@/hooks/useCompany';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { TeamSection } from '@/components/TeamSection';
 import { BusinessProfileSection } from '@/components/BusinessProfileSection';
+import { FormularLanding } from '@/components/FormularLanding';
+import { FormularTradeView } from '@/components/FormularTradeView';
+import { FormularEditorModal } from '@/components/FormularEditorModal';
+import { FormularPreviewDialog } from '@/components/FormularPreviewDialog';
+import { FormTrade, FormTemplateRow } from '@/hooks/useFormTemplates';
 
 function compressLogoImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -46,6 +52,7 @@ function compressLogoImage(file: File): Promise<Blob> {
 export default function Settings() {
   const navigate = useNavigate();
   const { company, updateCompany } = useCompany();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
@@ -61,6 +68,82 @@ export default function Settings() {
   );
   const [logoUrl, setLogoUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // Top-level view: 'settings' (current cards) or 'formular' (forms manager).
+  const [view, setView] = useState<'settings' | 'formular'>('settings');
+  // When inside the formular view, which trade is drilled into (null = landing).
+  const [selectedTrade, setSelectedTrade] = useState<FormTrade | null>(null);
+
+  // Modal state for the formulär editor
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
+  const [editorTemplate, setEditorTemplate] = useState<FormTemplateRow | undefined>();
+  const [editorInitialTrade, setEditorInitialTrade] = useState<FormTrade | undefined>();
+
+  // Preview dialog state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<FormTemplateRow | null>(null);
+
+  function openPreview(template: FormTemplateRow) {
+    setPreviewTemplate(template);
+    setPreviewOpen(true);
+  }
+
+  function handleSwitchView(next: 'settings' | 'formular') {
+    setView(next);
+    if (next !== 'formular') setSelectedTrade(null);
+  }
+
+  function openCreate(trade: FormTrade) {
+    setEditorMode('create');
+    setEditorTemplate(undefined);
+    setEditorInitialTrade(trade);
+    setEditorOpen(true);
+  }
+
+  function openEdit(template: FormTemplateRow) {
+    setEditorMode('edit');
+    setEditorTemplate(template);
+    setEditorInitialTrade(undefined);
+    setEditorOpen(true);
+  }
+
+  function notImplemented(_template?: FormTemplateRow) {
+    toast.info('Kommer snart');
+  }
+
+  async function handleToggleActive(template: FormTemplateRow) {
+    if (!company) return;
+    try {
+      if (template.source === 'custom') {
+        const { error } = await supabase
+          .from('company_form_templates')
+          .update({ is_active: !template.is_active })
+          .eq('id', template.id);
+        if (error) throw error;
+      } else {
+        // Lazy-copy a global into a custom row, set inactive on this firm's copy.
+        // (Standard library is never modified.)
+        const { error } = await supabase.from('company_form_templates').insert({
+          company_id: company.id,
+          based_on_template_id: template.id,
+          name: template.name,
+          description: template.description,
+          trade: template.trade,
+          sub_type: template.sub_type,
+          form_schema: template.form_schema,
+          red_flag_rules: template.red_flag_rules ?? [],
+          trigger_keywords: template.trigger_keywords ?? [],
+          is_active: false,
+        });
+        if (error) throw error;
+      }
+      queryClient.invalidateQueries({ queryKey: ['form-templates', company.id] });
+      toast.success(template.is_active ? 'Formulär inaktiverat' : 'Formulär aktiverat');
+    } catch (err: any) {
+      toast.error(err?.message || 'Kunde inte uppdatera status');
+    }
+  }
 
   useEffect(() => {
     if (company) {
@@ -165,15 +248,70 @@ export default function Settings() {
     }
   };
 
+  // Page header logic:
+  //   - settings view → arrow goes to dashboard, heading "Inställningar", toggle shows "Formulär"
+  //   - formular view + no trade selected → arrow goes back to settings view, heading "Formulär", toggle shows "Inställningar"
+  //   - formular view + trade selected → no page header at all; the trade view supplies its own
+  const showPageHeader = !(view === 'formular' && selectedTrade);
+  const handleHeaderBack = () => {
+    if (view === 'formular') handleSwitchView('settings');
+    else navigate('/');
+  };
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-xl font-heading font-bold">Inställningar</h1>
-      </div>
+      {showPageHeader && (
+        <div className="flex items-center gap-3 mb-6">
+          <Button variant="ghost" size="icon" onClick={handleHeaderBack}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-xl font-heading font-bold">
+            {view === 'formular' ? 'Formulär' : 'Inställningar'}
+          </h1>
+          {view === 'settings' && (
+            <div className="ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSwitchView('formular')}
+              >
+                Formulär
+              </Button>
+            </div>
+          )}
+          {view === 'formular' && (
+            <div className="ml-auto">
+              <Button
+                size="sm"
+                onClick={() => openCreate('general')}
+                className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+              >
+                <Plus className="h-4 w-4" />
+                Skapa formulär
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
+      {view === 'formular' ? (
+        selectedTrade ? (
+          <FormularTradeView
+            trade={selectedTrade}
+            onBack={() => setSelectedTrade(null)}
+            onCreate={openCreate}
+            onEdit={openEdit}
+            onPreview={openPreview}
+            onToggleActive={handleToggleActive}
+            onAddKeyword={openEdit}
+          />
+        ) : (
+          <FormularLanding
+            onSelectTrade={(t) => setSelectedTrade(t)}
+            onPreview={openPreview}
+          />
+        )
+      ) : (
       <div className="space-y-4">
 
         {/* Logo upload */}
@@ -287,6 +425,21 @@ export default function Settings() {
 
         <TeamSection />
       </div>
+      )}
+
+      <FormularEditorModal
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        mode={editorMode}
+        template={editorTemplate}
+        initialTrade={editorInitialTrade}
+      />
+
+      <FormularPreviewDialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        template={previewTemplate}
+      />
     </div>
   );
 }
