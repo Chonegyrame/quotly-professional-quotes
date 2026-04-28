@@ -120,10 +120,17 @@ export default function IncomingRequestForm() {
       setTemplate(data.template as Template);
       // Seed default values from schema shape
       const defaults: Record<string, FieldValue> = {};
-      for (const f of (data.template.form_schema?.fields ?? []) as FormField[]) {
+      const fields = (data.template.form_schema?.fields ?? []) as FormField[];
+      for (const f of fields) {
         if (f.type === 'multi_select') defaults[f.id] = [];
         else if (f.type === 'file_upload') defaults[f.id] = [];
         else defaults[f.id] = '';
+      }
+      // Pre-fill the first long_text field with the customer's brief input
+      // (typed on the intro stage). Saves them retyping the same description.
+      const firstLongText = fields.find((f) => f.type === 'long_text');
+      if (firstLongText && freeText.trim()) {
+        defaults[firstLongText.id] = freeText.trim();
       }
       setValues(defaults);
       setStage('form');
