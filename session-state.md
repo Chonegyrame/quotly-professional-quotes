@@ -1,76 +1,67 @@
 # Session State
 
-Last updated: 2026-04-28
+Last updated: 2026-04-28 (later)
 
-Branch: main — clean. All of this session's work committed across 6 commits and pushed to origin/main.
+Branch: main — clean once this session's commits land and push completes.
 
 ## What was done this session
 
-Architectural fix for the AI quote price-invariant bug. The `purchase_price ≠ unit_price / (1 + markup/100)` desync that produced -2483% margins was structurally eliminated, not patched.
+Built the **formulär manager** — a complete UI in Settings for firms to view, customize, and create their own intake forms — and made the routing of customers to those forms deterministic via trigger-keywords. The customer-facing classifier now does keyword-match-first with smart tie-break to AI.
 
-1. **Cosmetic polish on MaterialRowEditor.** Added unit suffixes to the priced inputs in `src/components/quote-builder/MaterialRowEditor.tsx`: `kr` on Inköpspris and Kundpris, `%` on Påslag. Absolute-positioned with `pointer-events-none`, right-padding on the inputs so digits don't overlap.
+### 1. DB foundation
+- Migration `20260428160000_form_template_trigger_keywords.sql`: added `trigger_keywords text[]` to both `form_templates` and `company_form_templates`. Dropped `UNIQUE (company_id, sub_type)` on the per-firm table and added `UNIQUE (company_id, name)` instead, so a firm can have multiple custom forms in the same sub_type.
+- Seeded sensible Swedish triggerord on all 15 standard templates (general/allman intentionally has none — AI fallback only).
+- Migration `20260428210000_prune_bygg_allman_triggerord.sql`: dropped `fönster` and `dörr` from bygg/allman after they caused false positives on tillbyggnad-style requests ("uterum med stora fönster").
 
-2. **Diagnosed the catalog-poisoning loop.** Traced the data flow with two parallel research agents (codebase mapper + architectural patterns research). Found the loop: AI hallucinates inconsistent triple → frontend saves all 3 fields to `quote_item_materials` → frontend upserts all 3 to `materials` catalog → next AI generation pulls polluted catalog via the saved-price override → bad values propagate forever. Confirmed via DB query: 31 of 41 rows broken in the test quote (id `999681a9-a477-4e35-9bb9-80a00511ee17`), 35 of 104 catalog rows had drift.
+### 2. Formulär manager UI
+- New entrypoint in Settings: header gets a "Formulär" toggle button (when in settings) → switches to the Formulär landing.
+- Landing shows a "Testa kundinput" sandbox (mirrors the production classifier including tie detection) + 4 trade boxes (El, VVS, Bygg, Övrigt) with form counts.
+- Each trade drills into a list of forms — global standards + the firm's custom forms.
+- Form cards show name + description, **"Trigger-ord:"** label with chips (gray = standard, accent = firm-added), Förhandsgranska / Redigera / Inaktivera actions.
+- Preview-as-customer dialog renders the form via existing `FormFieldRenderer`.
+- Lazy-copy mechanic: when a firm edits a global form (keywords or schema) or deactivates one, a `company_form_templates` row is silently created pointing back to the standard with `based_on_template_id`. The standard library is never modified. `useFormTemplates` hides globals that have been overridden.
+- Create / edit modal supports the same six field types as global forms (short_text, long_text, number, single_select, multi_select, file_upload) including a per-question options editor for select types, required toggle, add/remove fields.
+- Triggerord conflict detection: if a firm's keywords overlap with another active form, an amber panel lists the conflicts and toasts on save (custom always wins on actual classification).
 
-3. **Architectural fix: Option B1 (single source of truth) + repair fallback + DB CHECK.** Migration `20260427210000_price_invariant_generated_unit_price.sql`:
-   - Reconciled all 35 broken catalog rows by trusting `unit_price` and back-deriving `purchase_price`. Verified 0/104 broken post-migration.
-   - Dropped `unit_price` columns on `materials` and `trade_materials`, re-added as `GENERATED ALWAYS AS (purchase_price * (1 + markup_percent/100.0)) STORED`. The third field is now non-writable; the invariant is a property of the schema, not of code discipline.
-   - Added CHECK `markup_percent <= 1000` upper bound on both tables.
+### 3. Classifier rewrite (`classify-intake-request` v3 ACTIVE on remote)
+- Pulls global library + per-firm custom templates in parallel, then hides any global that has a custom override.
+- Phase 1: keyword match — case-insensitive substring against `trigger_keywords`. Custom > global, more hits = better.
+- Phase 2: tie-break — if multiple forms tie on (source, hit count), AI gets called *only on the tied subset*. Saves AI cost on clear winners, gets smart disambiguation on ambiguous ones.
+- Phase 3: if AI returns null OR no keywords matched at all → existing AI fallback over all candidates.
+- Phase 4: final fallback to general/allman.
+- Response now includes `method: "keyword" | "ai" | "fallback"` and `matched_keywords?: string[]` so the test sandbox and any future debugging UI can show why a customer landed where they did.
 
-4. **Edge function `generate-quote` v23 deployed.** Removed the old "repair before override" block (which the override was clobbering). Added "repair after override" as the final pass before returning, so any AI output that's still desynced for fresh materials gets back-calc'd before reaching the frontend or being snapshotted into `quote_item_materials`. The saved-price override unchanged in shape — still SELECTs all three fields (the generated unit_price is read-only, not invisible).
-
-5. **Frontend writers updated to stop writing `unit_price` to the catalog.** Three files: `src/pages/QuoteBuilder.tsx` catalog upsert (both INSERT and UPDATE branches), `src/pages/Materials.tsx` manual edit form, `src/hooks/useMaterials.tsx` starter-material seeder. Trying to write a generated column would now fail at the DB level — every site already drops the field.
-
-6. **Quote line items (`quote_item_materials`) intentionally left as-is.** That table keeps `unit_price` as a regular writable column (snapshot semantics — frozen at quote-save time so historical PDFs don't shift if the catalog price changes later). No schema change.
-
-7. **Selling-at-cost edge case fixed in `QuoteBuilder.tsx` catalog upsert.** If the user types only kundpris on a fresh row (no inköp, no markup), the upsert now treats it as selling-at-cost: `purchase_price = unit_price`, `markup_percent = 0`. DB recomputes `unit_price = purchase_price × 1` = same value the user typed. Round-trip preserved. Without this, the catalog row would have stored 0/0 and zeroed out the typed kundpris on next AI generation.
-
-8. **Supabase types regenerated.** `src/integrations/supabase/types.ts` overwritten via `mcp__supabase__generate_typescript_types`. `materials.unit_price` and `trade_materials.unit_price` now show as `number | null` reflecting their generated nature. PostgrestVersion 14.1's generator does not strip generated columns from Insert/Update types — they appear as optional. TypeScript won't catch a future write attempt, but the DB will reject at runtime.
+### 4. Customer flow polish
+- `IncomingRequestForm.tsx`: when the classifier returns a template, pre-fill the first `long_text` field with the customer's brief input. Saves them retyping the same description on the structured form (the "Kort om jobbet" / "Kort om projektet" textarea was the redundancy).
 
 ## Current state
 
-- **The class of bugs is structurally impossible.** No code path can store a `unit_price` that disagrees with `purchase_price × (1 + markup_percent/100)` in the catalog tables. Tested with a DB consistency query post-migration: 0/104 broken in `materials`, 0/86 broken in `trade_materials`.
-- The vavavav test quote (id `999681a9-a477-4e35-9bb9-80a00511ee17`) is left in the DB unchanged as a before/after reference. Its `quote_item_materials` rows still have the inflated purchase_price values from the old AI output (we don't touch the snapshot table). Generating a fresh quote with the same prompt is the right way to verify the fix.
-- AI generation flow now: AI returns triple → catalog override pulls consistent values for known materials → final repair pass back-derives any AI-only rows that drifted → response goes to frontend with all rows internally consistent.
-- The bidirectional MaterialRowEditor is unchanged from the user's perspective — typing any of the three fields still works. Only the persistence path differs.
+- The full formulär feature works end-to-end: customer types brief → classifier picks form by keyword (or AI on tie) → customer fills form with first long_text pre-filled → submission → firm sees lead in Inbox.
+- Standard library is immutable per firm. Firms get their own world of customizations via lazy-copy.
+- Test sandbox in Settings mirrors production behavior including tie surfacing ("X-vägs lika — AI avgör").
+- Verified live: "bygga ett uterum med stora fönster" now routes to Tillbyggnad / utbyggnad with `method=keyword, matched=["uterum"]` — the bygg/allman pruning broke the previous false-positive tie.
 
-## Commits this session (2026-04-28)
+## Edge functions deployed via MCP this session
 
-All committed to `main` and pushed. In order:
+- `classify-intake-request` v2 (initial keyword-first version) → v3 (tie-break-to-AI). v3 is current.
 
-1. `feat(quote): structurally fix AI price-invariant bug` — generated `unit_price` columns + post-override repair pass + frontend writers stop writing the generated field.
-2. `feat(lead-filter): 4-tier scoring + Inbox tweaks` — carryover from prior session.
-3. `feat(quote-send): branded customer view + preview dialog` — `get_quote_company_branding` RPC + `CustomerViewPreviewDialog`.
-4. `feat(landing): trade pages, marketing chrome, Inter-only typography` — extracted `MarketingHeader` / `Footer`, added Bygg/El/Vvs/Pricing/Anvandarvillkor/FragorOchSvar/Ovrigt pages, switched fonts to Inter everywhere.
-5. `refactor(flipdeck): replace previews with new four` — swapped to BusinessInsights/MaterialFlow/QuoteTracking/ROTCalc, deleted obsolete `FeatureDetail` page.
-6. `chore: firm migration status, session state, gitignore local notes` — doc + state + `*.local.md` ignore pattern.
+## Open / parked
 
-Edge functions deployed via MCP earlier this session: `generate-quote` v23, `score-incoming-request` v2 (both ACTIVE).
+- **Lightweight triggerord-only modal** for "+ lägg till" links on standard form chips — currently opens the full schema editor. Works but heavier than needed. Polish, low priority.
+- **RAG / embeddings work on quote generation** still parked per `future-implementations.local.md`. Not relevant to this session's classifier work — the candidate space is tiny (~30 forms). Real embeddings work belongs to the generate-quote learning system, gated on having an eval harness first.
+- **Keyword tuning policy.** The `fönster` / `dörr` prune is a one-time fix. Firms naturally extend keywords on their custom forms via the UI. If we ever see another false-positive class issue, the tie-break-to-AI usually catches it; if not, the standards can be pruned again.
 
-Skipped (intentionally untracked, not gitignored): `Lead Cards Scroll Animation.html`, `scroll-line-demo-fixed.html`, `formul_r slider.zip`, `landing page quotly.zip`, `zaptec-UHNdOFqNhNQ-unsplash.jpg`, `_design_handoff/`. Tidy or formally ignore in a future session.
-
-## What comes next
-
-1. **Test the fix end-to-end.** Generate the same Attefallshus prompt that produced -2483% margin in the previous session. Watch the marginal box: total materialkostnad should land in the ~150–250k range (not 13M+), marginal should be a sane positive percentage. If anything still drifts, check edge function logs for `Repaired N inconsistent material rows post-override` to see how many AI rows the final-pass repair caught.
-2. **Carryover from prior session — not touched today:**
-   - Build `/integritetspolicy` (still `#` in footer; GDPR Art. 13–14 requires it)
-   - Build `/cookie-instalningar` or simple disclosure
-   - Apply Peter-style fix to `/el` Johan example (Bulk Box 3 from 3 lines → 6–7 lines)
-   - Decide what `Lär dig mer` (footer) links to
-   - Hero ImagePlaceholders on /bygg, /vvs, /el still aspect-4/3 placeholders
-   - Verify 4-tier lead-scoring deploy (`20260425120000_four_tier_lead_scoring.sql` + `score-incoming-request` edge function)
-   - Delete dead `src/pages/TradePage.tsx`
-
-## Open questions
-
-- **Whether to add Zod validation + retry at the AI boundary (Option E from the architectural research).** Not implemented this session — B1 + the repair fallback already break the loop. E would add extra robustness if AI quality becomes an issue. Easy to layer in as v24 later.
-- All carryover from prior sessions still stand: image sourcing strategy (pay-per-shot stock vs Adobe Firefly vs design partner), cookie banner vs simple disclosure, when to start the first specialized agent from `future-implementations.local.md`, all legal placeholders (Org.nr, address, support email, etc.).
+## Notable carryover from prior sessions still open
+- Build `/integritetspolicy`, cookie disclosure
+- Lär dig mer footer link target
+- Hero ImagePlaceholders on `/bygg`, `/vvs`, `/el`
+- Verify 4-tier lead-scoring deploy end-to-end with a real intake
+- Delete dead `src/pages/TradePage.tsx` (still alive — modified to use new chrome — but worth re-checking if it's still doing useful work)
 
 ## Context that is easy to forget
 
-- **`materials.unit_price` and `trade_materials.unit_price` are GENERATED columns now.** Any new code that tries to INSERT or UPDATE them will fail with a Postgres error. Frontend types still show them as writable (PostgrestVersion 14.1 limitation), but TypeScript won't catch the misuse — the DB will. Always write only `purchase_price` and `markup_percent` to those tables.
-- **`quote_item_materials.unit_price` is intentionally NOT generated.** It's a snapshot column — frozen at save time so historical PDFs don't shift. All three fields are writable on that table. Don't refactor it to match `materials`; it has a different contract (immutable history).
-- **Saved-price override still copies all three fields from catalog.** Works because the generated unit_price is fully readable via SELECT. Only the write side is restricted.
-- **Selling-at-cost shortcut at `QuoteBuilder.tsx` catalog upsert.** If user types kundpris alone with `purchasePrice === 0`, the upsert promotes `unit_price → purchase_price` and sets markup to 0. Don't "fix" this thinking it looks weird — without it, user-typed kundpris alone would round-trip to 0.
-- **vavavav test quote still in DB (`999681a9-a477-4e35-9bb9-80a00511ee17`)** with old broken purchase_price values intact. Its `quote_item_materials` rows are not reconciled (snapshot table is left alone). Useful for before/after comparison; safe to delete once verified.
-- All carryover quirks from prior sessions still apply: Vite on port 8081 with `strictPort: true` (preview_start fails, user runs dev server), FlipDeck must stay JS-free per-scroll, FrontPanel uses Flexbox not Grid, FlipDeck card height = 425, Inter is the only font, Footer is shared component, no em-dashes in Swedish copy, formul_r slider.zip in root is user's source artifact (don't delete), DPA is INSIDE Användarvillkor section 7, Box 1 in PipelineDemo uses JS-calculated min-height, `future-implementations.local.md` is gitignored local notes file.
+- **Lazy-copy creation is silent and idempotent.** Hitting "Inaktivera" on a global creates a `company_form_templates` row with the global's snapshot. Editing a custom doesn't recreate. `based_on_template_id` is the link.
+- **The "Standard" badge on a card disappears once the firm forks the schema, not when they just add keywords.** Adding keywords keeps the linked-copy displayed as "Anpassad standard". Editing questions removes the Standard badge entirely.
+- **`UNIQUE (company_id, name)`** on `company_form_templates` is the new constraint. Firms get a friendly error if they try to create two custom forms with the same name. `(company_id, sub_type)` is intentionally not unique anymore.
+- **Customer flow respects firm trades.** A VVS-only firm's customers will never see El forms regardless of how triggerord match — the classifier filters candidates by `firm.primary_trade + secondary_trades + general` first.
+- **All carryover quirks from prior sessions still apply.** Vite on port 8081 with `strictPort: true` (npm run dev OK via Bash run_in_background; preview_* tools fail), no em-dashes in Swedish copy, Inter is the only font, FlipDeck must stay JS-free per-scroll, etc.
