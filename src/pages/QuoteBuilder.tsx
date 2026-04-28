@@ -214,6 +214,16 @@ export default function QuoteBuilder() {
   const handleSave = async (status: 'draft' | 'sent') => {
     const effectiveStatus = status === 'sent' ? 'draft' : status;
 
+    // Validation: block save if any named material has inköp filled but kundpris empty.
+    // This catches the "user filled cost but forgot customer price" mistake.
+    const incompletePricedMaterial = items
+      .flatMap((i) => i.materials)
+      .find((m) => m.name.trim() && m.purchasePrice > 0 && (!m.unitPrice || m.unitPrice === 0));
+    if (incompletePricedMaterial) {
+      toast.error(`Pris ej angett för "${incompletePricedMaterial.name}"`);
+      return;
+    }
+
     try {
       const quoteItems = items
         .filter((i) => i.description.trim())
@@ -290,6 +300,70 @@ export default function QuoteBuilder() {
         });
         if (materialsToInsert.length > 0) {
           await supabase.from('quote_item_materials').insert(materialsToInsert);
+        }
+      }
+
+      // Persist priced materials into the company's catalog so future AI quotes
+      // can reuse the contractor's real prices instead of hallucinating new ones.
+      // Matching is case-insensitive + trimmed name (V1 — RSK matching arrives with the catalog integration).
+      // Most-recent-wins on conflict.
+      if (company?.id) {
+        const pricedMaterials = items
+          .flatMap((i) => i.materials)
+          .filter((m) => m.name.trim() && (m.purchasePrice > 0 || m.unitPrice > 0));
+
+        if (pricedMaterials.length > 0) {
+          try {
+            const { data: existingMaterials } = await supabase
+              .from('materials')
+              .select('id, name')
+              .eq('company_id', company.id)
+              .eq('is_deleted', false);
+
+            const existingByName = new Map<string, string>();
+            for (const e of existingMaterials ?? []) {
+              existingByName.set(e.name.trim().toLowerCase(), e.id);
+            }
+
+            const seen = new Set<string>();
+            for (const mat of pricedMaterials) {
+              const key = mat.name.trim().toLowerCase();
+              if (seen.has(key)) continue;
+              seen.add(key);
+
+              // If user typed only kundpris (no inköp), treat as selling at cost:
+              // purchase_price = unit_price, markup = 0. The DB recomputes unit_price
+              // from these two, so the round-trip preserves what the user typed.
+              const purchasePriceForCatalog = mat.purchasePrice > 0
+                ? mat.purchasePrice
+                : mat.unitPrice;
+              const markupPercentForCatalog = mat.purchasePrice > 0
+                ? mat.markupPercent
+                : 0;
+
+              const existingId = existingByName.get(key);
+              if (existingId) {
+                await supabase
+                  .from('materials')
+                  .update({
+                    purchase_price: purchasePriceForCatalog,
+                    markup_percent: markupPercentForCatalog,
+                    unit: mat.unit,
+                  })
+                  .eq('id', existingId);
+              } else {
+                await supabase.from('materials').insert({
+                  company_id: company.id,
+                  name: mat.name.trim(),
+                  purchase_price: purchasePriceForCatalog,
+                  markup_percent: markupPercentForCatalog,
+                  unit: mat.unit,
+                });
+              }
+            }
+          } catch (err) {
+            console.error('[materials catalog persist] non-fatal:', err);
+          }
         }
       }
 
@@ -537,7 +611,16 @@ export default function QuoteBuilder() {
           <Button
             className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
             disabled={!canProceedStep1}
-            onClick={() => setCurrentStep(2)}
+            onClick={() => {
+              const incomplete = items
+                .flatMap((i) => i.materials)
+                .find((m) => m.name.trim() && m.purchasePrice > 0 && (!m.unitPrice || m.unitPrice === 0));
+              if (incomplete) {
+                toast.error(`Pris ej angett för "${incomplete.name}"`);
+                return;
+              }
+              setCurrentStep(2);
+            }}
           >
             Förhandsgranska <ArrowRight className="h-4 w-4" />
           </Button>

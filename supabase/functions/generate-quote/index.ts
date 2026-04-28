@@ -920,6 +920,33 @@ INSTRUKTIONER:
 - keywords: extrahera jobbspecifika nyckelord. ABSOLUT REGEL: skapa en verb+substantiv-fras (verb_substantiv med understreck, verbet i infinitiv, substantivet i singular obestämd) ENDAST om verbet står ordagrant som ett ord i texten. Gissa aldrig ett verb. Exempel: "byta element i köket" → ["byta_element","element","kök"] (byta finns). "Badrumsrenovering med nytt kakel" → ["renovering","badrum","kakel"] (inga verb i texten — inga fraser, inte ens lägga_kakel). När en fras emitteras, inkludera också substantivet separat. Substantiv utan verb (platser, jobbtyper som "renovering") inkluderas ensamma. Dela svenska sammansättningar (badrumsrenovering → renovering + badrum). Singular obestämd. Uteslut vaga ord. Returnera [] om inga relevanta nyckelord finns.
 - Använd material från listan ovan när möjligt. Om ett material saknas, lägg till det med rimliga svenska marknadspriser.
 
+PRISFÄLT — KRITISKT, LÄS NOGA:
+Alla tre prisfält per material är ALLTID PER ENHET (per styck, per m, per m2, per kg, per liter osv). ALDRIG totalpriser för raden. Quantity-fältet hanterar antalet — multiplicera ALDRIG in det i prisfälten.
+
+Definitioner:
+- purchase_price = inköpspris per enhet i SEK (vad hantverkaren betalar leverantören för EN enhet)
+- markup_percent = påslag i procent (t.ex. 15 betyder 15%)
+- unit_price = kundpris per enhet i SEK (vad kunden betalar för EN enhet)
+
+OBLIGATORISK MATEMATISK IDENTITET (måste stämma för varje material):
+unit_price = round(purchase_price × (1 + markup_percent / 100))
+
+Exempel — KORREKT:
+{ "name": "Gipsskiva 13mm", "quantity": 110, "unit": "m2", "purchase_price": 74, "markup_percent": 15, "unit_price": 85 }
+→ 74 × 1.15 = 85.10 ≈ 85 ✓ (radens totala kundpris blir 110 × 85 = 9 350 kr)
+
+Exempel — FEL (gör ALDRIG så här):
+{ "quantity": 110, "purchase_price": 9775, "unit_price": 85 }
+→ purchase_price är här fel: 9775 är 110 × ~89, alltså totalpriset, inte per enhet. Detta krossar marginalkalkylen.
+
+Realistiska svenska inköpspriser per enhet (exempel — använd som sanity-check):
+- Konstruktionsvirke 45×120mm: ~25–60 kr/m
+- Gipsskiva 13mm: ~50–90 kr/m2
+- Stenull 145mm: ~120–180 kr/m2
+- Fasadpanel grundmålad 22×120mm: ~80–250 kr/m2
+- Takpannor betong: ~200–400 kr/m2
+Om du är osäker på inköpspriset, sätt purchase_price = round(unit_price / (1 + markup_percent/100)) så identiteten håller.
+
 Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
 {
   "customer_name": string | null,
@@ -1006,6 +1033,97 @@ Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
     // Merge input keywords with Claude-generated keywords (deduplicated)
     const allKeywords = [...new Set([...inputKeywords, ...parsed.keywords])];
     parsed.keywords = allKeywords;
+
+    // Override AI-suggested prices with the contractor's saved prices for any material
+    // they have priced before. Match is case-insensitive + trimmed name (V1 — RSK match
+    // is added when catalog integration ships). Failures here are non-fatal: we just
+    // fall back to the AI's hallucinated prices for unmatched materials.
+    try {
+      const aiMaterialNames = new Set<string>();
+      for (const item of parsed.items) {
+        if (Array.isArray(item.materials)) {
+          for (const m of item.materials) {
+            if (typeof m?.name === "string" && m.name.trim()) {
+              aiMaterialNames.add(m.name.trim().toLowerCase());
+            }
+          }
+        }
+      }
+
+      if (aiMaterialNames.size > 0) {
+        const { data: savedMaterials } = await adminClient
+          .from("materials")
+          .select("name, unit_price, purchase_price, markup_percent")
+          .eq("company_id", company_id)
+          .eq("is_deleted", false);
+
+        if (savedMaterials && savedMaterials.length > 0) {
+          const priceMap = new Map<
+            string,
+            { unit_price: number; purchase_price: number; markup_percent: number }
+          >();
+          for (const sm of savedMaterials) {
+            const key = sm.name.trim().toLowerCase();
+            if (aiMaterialNames.has(key)) {
+              priceMap.set(key, {
+                unit_price: sm.unit_price,
+                purchase_price: sm.purchase_price,
+                markup_percent: sm.markup_percent,
+              });
+            }
+          }
+
+          for (const item of parsed.items) {
+            if (Array.isArray(item.materials)) {
+              for (const m of item.materials) {
+                if (typeof m?.name === "string") {
+                  const saved = priceMap.get(m.name.trim().toLowerCase());
+                  if (saved) {
+                    m.unit_price = saved.unit_price;
+                    m.purchase_price = saved.purchase_price;
+                    m.markup_percent = saved.markup_percent;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Saved-price override lookup failed (non-fatal):", err);
+    }
+
+    // Final consistency pass: enforce the price identity on every material
+    // before returning to the frontend. Catalog rows are already consistent
+    // (DB enforces it via the generated unit_price column), but fresh AI
+    // materials with no catalog match can still arrive desynced. Trust the
+    // AI's unit_price (most stable per-unit field) and back-calc purchase
+    // from markup. This is the last write before the frontend sees the data,
+    // so it bounds what gets snapshotted into quote_item_materials on save.
+    let repairedRowCount = 0;
+    for (const item of parsed.items) {
+      if (!Array.isArray(item.materials)) continue;
+      for (const m of item.materials) {
+        const unit = Number(m?.unit_price);
+        const purchase = Number(m?.purchase_price);
+        const markup = Number(m?.markup_percent);
+        if (!Number.isFinite(unit) || unit <= 0) continue;
+        if (!Number.isFinite(purchase) || !Number.isFinite(markup)) continue;
+
+        const expectedUnit = purchase * (1 + markup / 100);
+        const drift = Math.abs(unit - expectedUnit) / unit;
+        if (drift <= 0.05) continue;
+
+        const safeMarkup = markup > 0 ? markup : 15;
+        const repairedPurchase = unit / (1 + safeMarkup / 100);
+        m.purchase_price = Math.round(repairedPurchase * 100) / 100;
+        m.markup_percent = safeMarkup;
+        repairedRowCount++;
+      }
+    }
+    if (repairedRowCount > 0) {
+      console.log(`Repaired ${repairedRowCount} inconsistent material rows post-override`);
+    }
 
     // Dev observability: return the full assembled prompt so the frontend
     // can persist it on the created quote. Viewed via "Visa AI-prompt" on

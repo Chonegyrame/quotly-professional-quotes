@@ -1,11 +1,9 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trash2, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MaterialRow } from './types';
 import { formatCurrency } from '@/data/mockData';
-
-type PricingMode = 'simple' | 'detailed';
 
 interface MaterialRowEditorProps {
   material: MaterialRow;
@@ -17,7 +15,6 @@ interface MaterialRowEditorProps {
     markup_percent: number;
     unit: string;
   }[];
-  pricingMode?: PricingMode;
   onChange: (updated: MaterialRow) => void;
   onRemove: () => void;
 }
@@ -31,10 +28,15 @@ const toNumber = (value: string) => {
 const calculateCustomerPrice = (purchasePrice: number, markupPercent: number) =>
   purchasePrice * (1 + markupPercent / 100);
 
+const calculateMarkupPercent = (purchasePrice: number, unitPrice: number) => {
+  if (purchasePrice <= 0) return 0;
+  // Round to 1 decimal so back-calculated markups don't render as 14.285714285.
+  return Math.round(((unitPrice / purchasePrice) - 1) * 1000) / 10;
+};
+
 export function MaterialRowEditor({
   material,
   availableMaterials,
-  pricingMode = 'simple',
   onChange,
   onRemove,
 }: MaterialRowEditorProps) {
@@ -75,6 +77,9 @@ export function MaterialRowEditor({
     setShowSearch(false);
   };
 
+  // Purchase price changes auto-fill customer price ONLY when markup is > 0.
+  // This way "only inköp filled" leaves kundpris at 0, which the save validator
+  // catches with a "Pris ej angett" toast.
   const updatePurchasePrice = (value: string) => {
     const purchasePrice = toNumber(value);
     const markupPercent = material.markupPercent || 0;
@@ -82,10 +87,14 @@ export function MaterialRowEditor({
     onChange({
       ...material,
       purchasePrice,
-      unitPrice: calculateCustomerPrice(purchasePrice, markupPercent),
+      unitPrice: markupPercent > 0
+        ? calculateCustomerPrice(purchasePrice, markupPercent)
+        : material.unitPrice,
     });
   };
 
+  // Markup changes always recalc kundpris (user is explicitly engaging with pricing).
+  // Including markup = 0 (selling at cost) which sets kundpris = inköp.
   const updateMarkupPercent = (value: string) => {
     const markupPercent = toNumber(value);
     const purchasePrice = material.purchasePrice || 0;
@@ -93,7 +102,24 @@ export function MaterialRowEditor({
     onChange({
       ...material,
       markupPercent,
-      unitPrice: calculateCustomerPrice(purchasePrice, markupPercent),
+      unitPrice: purchasePrice > 0
+        ? calculateCustomerPrice(purchasePrice, markupPercent)
+        : material.unitPrice,
+    });
+  };
+
+  // Customer price changes back-calc markup if inköp is set.
+  // If inköp is empty, just store kundpris and leave markup untouched.
+  const updateUnitPrice = (value: string) => {
+    const unitPrice = toNumber(value);
+    const purchasePrice = material.purchasePrice || 0;
+
+    onChange({
+      ...material,
+      unitPrice,
+      markupPercent: purchasePrice > 0
+        ? calculateMarkupPercent(purchasePrice, unitPrice)
+        : material.markupPercent,
     });
   };
 
@@ -145,107 +171,80 @@ export function MaterialRowEditor({
           )}
         </div>
 
-        {pricingMode === 'detailed' ? (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <Input
-                type="number"
-                min="1"
-                value={material.quantity === 0 ? '' : material.quantity}
-                onChange={(event) =>
-                  onChange({
-                    ...material,
-                    quantity: event.target.value === '' ? 0 : parseFloat(event.target.value),
-                  })
-                }
-                className="text-sm h-8"
-                placeholder="Antal"
-              />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <Input
+            type="number"
+            min="1"
+            value={material.quantity === 0 ? '' : material.quantity}
+            onChange={(event) =>
+              onChange({
+                ...material,
+                quantity: event.target.value === '' ? 0 : parseFloat(event.target.value),
+              })
+            }
+            className="text-sm h-8"
+            placeholder="Antal"
+          />
 
-              <Input
-                type="number"
-                min="0"
-                value={material.purchasePrice || ''}
-                onChange={(event) => updatePurchasePrice(event.target.value)}
-                className="text-sm h-8"
-                placeholder="Inköpspris"
-              />
-
-              <Input
-                type="number"
-                min="0"
-                value={material.markupPercent || ''}
-                onChange={(event) => updateMarkupPercent(event.target.value)}
-                className="text-sm h-8"
-                placeholder="Påslag %"
-              />
-
-              <Input
-                value={material.unitPrice.toFixed(2)}
-                readOnly
-                className="text-sm h-8 bg-muted/40"
-                placeholder="Kundpris"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-1">
-              <span className="text-[11px] text-muted-foreground">Antal</span>
-              <span className="text-[11px] text-muted-foreground">Inköpspris</span>
-              <span className="text-[11px] text-muted-foreground">Påslag</span>
-              <span className="text-[11px] text-muted-foreground">Kundpris</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-medium">
-                {formatCurrency(material.quantity * material.unitPrice)}
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRemove}>
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="relative">
             <Input
               type="number"
-              min="1"
-              value={material.quantity === 0 ? '' : material.quantity}
-              onChange={(event) =>
-                onChange({
-                  ...material,
-                  quantity: event.target.value === '' ? 0 : parseFloat(event.target.value),
-                })
-              }
-              className="text-sm h-8"
-              placeholder="Antal"
+              min="0"
+              value={material.purchasePrice || ''}
+              onChange={(event) => updatePurchasePrice(event.target.value)}
+              className="text-sm h-8 pr-8"
+              placeholder="Inköpspris"
             />
+            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+              kr
+            </span>
+          </div>
 
+          <div className="relative">
+            <Input
+              type="number"
+              min="0"
+              value={material.markupPercent || ''}
+              onChange={(event) => updateMarkupPercent(event.target.value)}
+              className="text-sm h-8 pr-7"
+              placeholder="Påslag"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+              %
+            </span>
+          </div>
+
+          <div className="relative">
             <Input
               type="number"
               min="0"
               value={material.unitPrice || ''}
-              onChange={(event) =>
-                onChange({
-                  ...material,
-                  unitPrice: parseFloat(event.target.value) || 0,
-                })
-              }
-              className="text-sm h-8"
+              onChange={(event) => updateUnitPrice(event.target.value)}
+              className="text-sm h-8 pr-8"
               placeholder="Kundpris"
             />
-
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-medium">
-                {formatCurrency(material.quantity * material.unitPrice)}
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRemove}>
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
-            </div>
+            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+              kr
+            </span>
           </div>
-        )}
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-1">
+          <span className="text-[11px] text-muted-foreground">Antal</span>
+          <span className="text-[11px] text-muted-foreground">Inköpspris</span>
+          <span className="text-[11px] text-muted-foreground">Påslag</span>
+          <span className="text-[11px] text-muted-foreground">Kundpris</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground font-medium">
+            {formatCurrency(material.quantity * material.unitPrice)}
+          </span>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRemove}>
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
-

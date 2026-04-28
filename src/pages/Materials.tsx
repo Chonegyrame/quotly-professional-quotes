@@ -196,13 +196,11 @@ export default function Materials() {
 
       const purchasePrice = Math.max(0, parseNumber(formPurchasePrice));
       const markupPercent = Math.max(0, parseNumber(formMarkupPercent));
-      const unitPrice = calculateCustomerPrice(purchasePrice, markupPercent);
 
       const payload = {
         name: formName,
         purchase_price: purchasePrice,
         markup_percent: markupPercent,
-        unit_price: unitPrice,
         unit: formUnit,
         category: formCategory,
         is_deleted: false,

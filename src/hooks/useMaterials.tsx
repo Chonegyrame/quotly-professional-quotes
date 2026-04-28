@@ -108,7 +108,6 @@ export function useMaterials() {
           .map((starter) => ({
             company_id: company.id,
             name: starter.name,
-            unit_price: 0,
             purchase_price: 0,
             markup_percent: 0,
             unit: starter.unit,

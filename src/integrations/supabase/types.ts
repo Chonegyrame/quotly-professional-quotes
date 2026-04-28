@@ -86,6 +86,7 @@ export type Database = {
           default_vat: number
           email: string | null
           email_template: string | null
+          form_slug: string | null
           id: string
           logo_url: string | null
           name: string
@@ -101,6 +102,7 @@ export type Database = {
           default_vat?: number
           email?: string | null
           email_template?: string | null
+          form_slug?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -116,6 +118,7 @@ export type Database = {
           default_vat?: number
           email?: string | null
           email_template?: string | null
+          form_slug?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -124,6 +127,119 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      company_business_profile: {
+        Row: {
+          base_address: string | null
+          base_lat: number | null
+          base_lng: number | null
+          company_id: string
+          created_at: string
+          id: string
+          min_ticket_sek: number | null
+          primary_trade: string
+          secondary_trades: string[]
+          service_radius_km: number | null
+          specialties: string[]
+          updated_at: string
+        }
+        Insert: {
+          base_address?: string | null
+          base_lat?: number | null
+          base_lng?: number | null
+          company_id: string
+          created_at?: string
+          id?: string
+          min_ticket_sek?: number | null
+          primary_trade: string
+          secondary_trades?: string[]
+          service_radius_km?: number | null
+          specialties?: string[]
+          updated_at?: string
+        }
+        Update: {
+          base_address?: string | null
+          base_lat?: number | null
+          base_lng?: number | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          min_ticket_sek?: number | null
+          primary_trade?: string
+          secondary_trades?: string[]
+          service_radius_km?: number | null
+          specialties?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_business_profile_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_form_templates: {
+        Row: {
+          based_on_template_id: string | null
+          company_id: string
+          created_at: string
+          description: string | null
+          form_schema: Json
+          id: string
+          is_active: boolean
+          name: string
+          red_flag_rules: Json
+          sub_type: string
+          trade: string
+          updated_at: string
+        }
+        Insert: {
+          based_on_template_id?: string | null
+          company_id: string
+          created_at?: string
+          description?: string | null
+          form_schema: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          red_flag_rules?: Json
+          sub_type: string
+          trade: string
+          updated_at?: string
+        }
+        Update: {
+          based_on_template_id?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          form_schema?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          red_flag_rules?: Json
+          sub_type?: string
+          trade?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_form_templates_based_on_template_id_fkey"
+            columns: ["based_on_template_id"]
+            isOneToOne: false
+            referencedRelation: "form_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_form_templates_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       company_invites: {
         Row: {
@@ -349,6 +465,151 @@ export type Database = {
           },
         ]
       }
+      form_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          form_schema: Json
+          id: string
+          is_active: boolean
+          name: string
+          red_flag_rules: Json
+          sub_type: string
+          trade: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          form_schema: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          red_flag_rules?: Json
+          sub_type: string
+          trade: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          form_schema?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          red_flag_rules?: Json
+          sub_type?: string
+          trade?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      incoming_requests: {
+        Row: {
+          ai_confidence: string | null
+          ai_score: number | null
+          ai_tier: string | null
+          ai_verdict: Json | null
+          company_id: string
+          converted_to_quote_id: string | null
+          created_at: string
+          form_template_id: string | null
+          free_text: string | null
+          id: string
+          internal_notes: string | null
+          needs_human_review: boolean
+          photos: string[]
+          status: string
+          submitted_answers: Json
+          submitter_address: string | null
+          submitter_city: string | null
+          submitter_email: string | null
+          submitter_lat: number | null
+          submitter_lng: number | null
+          submitter_name: string | null
+          submitter_phone: string | null
+          submitter_postal_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_confidence?: string | null
+          ai_score?: number | null
+          ai_tier?: string | null
+          ai_verdict?: Json | null
+          company_id: string
+          converted_to_quote_id?: string | null
+          created_at?: string
+          form_template_id?: string | null
+          free_text?: string | null
+          id?: string
+          internal_notes?: string | null
+          needs_human_review?: boolean
+          photos?: string[]
+          status?: string
+          submitted_answers?: Json
+          submitter_address?: string | null
+          submitter_city?: string | null
+          submitter_email?: string | null
+          submitter_lat?: number | null
+          submitter_lng?: number | null
+          submitter_name?: string | null
+          submitter_phone?: string | null
+          submitter_postal_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_confidence?: string | null
+          ai_score?: number | null
+          ai_tier?: string | null
+          ai_verdict?: Json | null
+          company_id?: string
+          converted_to_quote_id?: string | null
+          created_at?: string
+          form_template_id?: string | null
+          free_text?: string | null
+          id?: string
+          internal_notes?: string | null
+          needs_human_review?: boolean
+          photos?: string[]
+          status?: string
+          submitted_answers?: Json
+          submitter_address?: string | null
+          submitter_city?: string | null
+          submitter_email?: string | null
+          submitter_lat?: number | null
+          submitter_lng?: number | null
+          submitter_name?: string | null
+          submitter_phone?: string | null
+          submitter_postal_code?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incoming_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incoming_requests_converted_to_quote_id_fkey"
+            columns: ["converted_to_quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incoming_requests_form_template_id_fkey"
+            columns: ["form_template_id"]
+            isOneToOne: false
+            referencedRelation: "form_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materials: {
         Row: {
           category: string | null
@@ -360,7 +621,7 @@ export type Database = {
           name: string
           purchase_price: number
           unit: string | null
-          unit_price: number
+          unit_price: number | null
         }
         Insert: {
           category?: string | null
@@ -372,7 +633,7 @@ export type Database = {
           name: string
           purchase_price?: number
           unit?: string | null
-          unit_price?: number
+          unit_price?: number | null
         }
         Update: {
           category?: string | null
@@ -384,7 +645,7 @@ export type Database = {
           name?: string
           purchase_price?: number
           unit?: string | null
-          unit_price?: number
+          unit_price?: number | null
         }
         Relationships: [
           {
@@ -734,7 +995,7 @@ export type Database = {
           name: string
           purchase_price: number
           unit: string
-          unit_price: number
+          unit_price: number | null
         }
         Insert: {
           category: string
@@ -745,7 +1006,7 @@ export type Database = {
           name: string
           purchase_price?: number
           unit?: string
-          unit_price?: number
+          unit_price?: number | null
         }
         Update: {
           category?: string
@@ -756,7 +1017,7 @@ export type Database = {
           name?: string
           purchase_price?: number
           unit?: string
-          unit_price?: number
+          unit_price?: number | null
         }
         Relationships: []
       }
@@ -770,6 +1031,20 @@ export type Database = {
         Returns: boolean
       }
       company_role: { Args: { check_company_id: string }; Returns: string }
+      get_company_by_slug: {
+        Args: { slug: string }
+        Returns: {
+          base_lat: number
+          base_lng: number
+          form_slug: string
+          id: string
+          logo_url: string
+          name: string
+          primary_trade: string
+          secondary_trades: string[]
+          service_radius_km: number
+        }[]
+      }
       get_company_members: {
         Args: { p_company_id: string }
         Returns: {
@@ -780,6 +1055,18 @@ export type Database = {
         }[]
       }
       get_next_quote_number: { Args: { p_company_id: string }; Returns: string }
+      get_quote_company_branding: {
+        Args: { p_quote_id: string }
+        Returns: {
+          address: string
+          bankgiro: string
+          email: string
+          logo_url: string
+          name: string
+          org_number: string
+          phone: string
+        }[]
+      }
       is_company_member: {
         Args: { check_company_id: string }
         Returns: boolean
@@ -788,6 +1075,7 @@ export type Database = {
         Args: { p_company_id: string; p_patterns: Json; p_trade: string }
         Returns: undefined
       }
+      slugify_company_name: { Args: { input: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
