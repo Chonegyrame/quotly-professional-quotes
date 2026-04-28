@@ -194,6 +194,7 @@ export type Database = {
           red_flag_rules: Json
           sub_type: string
           trade: string
+          trigger_keywords: string[]
           updated_at: string
         }
         Insert: {
@@ -208,6 +209,7 @@ export type Database = {
           red_flag_rules?: Json
           sub_type: string
           trade: string
+          trigger_keywords?: string[]
           updated_at?: string
         }
         Update: {
@@ -222,6 +224,7 @@ export type Database = {
           red_flag_rules?: Json
           sub_type?: string
           trade?: string
+          trigger_keywords?: string[]
           updated_at?: string
         }
         Relationships: [
@@ -476,6 +479,7 @@ export type Database = {
           red_flag_rules: Json
           sub_type: string
           trade: string
+          trigger_keywords: string[]
           updated_at: string
           version: number
         }
@@ -489,6 +493,7 @@ export type Database = {
           red_flag_rules?: Json
           sub_type: string
           trade: string
+          trigger_keywords?: string[]
           updated_at?: string
           version?: number
         }
@@ -502,6 +507,7 @@ export type Database = {
           red_flag_rules?: Json
           sub_type?: string
           trade?: string
+          trigger_keywords?: string[]
           updated_at?: string
           version?: number
         }
