@@ -1,67 +1,69 @@
 # Session State
 
-Last updated: 2026-04-28 (later)
-
-Branch: main — clean once this session's commits land and push completes.
+Last updated: 2026-04-30
+Branch: main — backlog cleared, this session ends clean. All ROT Phase 3 + UI/CRM work split into 11 small commits and pushed past `ae852fe`.
 
 ## What was done this session
 
-Built the **formulär manager** — a complete UI in Settings for firms to view, customize, and create their own intake forms — and made the routing of customers to those forms deterministic via trigger-keywords. The customer-facing classifier now does keyword-match-first with smart tie-break to AI.
-
-### 1. DB foundation
-- Migration `20260428160000_form_template_trigger_keywords.sql`: added `trigger_keywords text[]` to both `form_templates` and `company_form_templates`. Dropped `UNIQUE (company_id, sub_type)` on the per-firm table and added `UNIQUE (company_id, name)` instead, so a firm can have multiple custom forms in the same sub_type.
-- Seeded sensible Swedish triggerord on all 15 standard templates (general/allman intentionally has none — AI fallback only).
-- Migration `20260428210000_prune_bygg_allman_triggerord.sql`: dropped `fönster` and `dörr` from bygg/allman after they caused false positives on tillbyggnad-style requests ("uterum med stora fönster").
-
-### 2. Formulär manager UI
-- New entrypoint in Settings: header gets a "Formulär" toggle button (when in settings) → switches to the Formulär landing.
-- Landing shows a "Testa kundinput" sandbox (mirrors the production classifier including tie detection) + 4 trade boxes (El, VVS, Bygg, Övrigt) with form counts.
-- Each trade drills into a list of forms — global standards + the firm's custom forms.
-- Form cards show name + description, **"Trigger-ord:"** label with chips (gray = standard, accent = firm-added), Förhandsgranska / Redigera / Inaktivera actions.
-- Preview-as-customer dialog renders the form via existing `FormFieldRenderer`.
-- Lazy-copy mechanic: when a firm edits a global form (keywords or schema) or deactivates one, a `company_form_templates` row is silently created pointing back to the standard with `based_on_template_id`. The standard library is never modified. `useFormTemplates` hides globals that have been overridden.
-- Create / edit modal supports the same six field types as global forms (short_text, long_text, number, single_select, multi_select, file_upload) including a per-question options editor for select types, required toggle, add/remove fields.
-- Triggerord conflict detection: if a firm's keywords overlap with another active form, an amber panel lists the conflicts and toasts on save (custom always wins on actual classification).
-
-### 3. Classifier rewrite (`classify-intake-request` v3 ACTIVE on remote)
-- Pulls global library + per-firm custom templates in parallel, then hides any global that has a custom override.
-- Phase 1: keyword match — case-insensitive substring against `trigger_keywords`. Custom > global, more hits = better.
-- Phase 2: tie-break — if multiple forms tie on (source, hit count), AI gets called *only on the tied subset*. Saves AI cost on clear winners, gets smart disambiguation on ambiguous ones.
-- Phase 3: if AI returns null OR no keywords matched at all → existing AI fallback over all candidates.
-- Phase 4: final fallback to general/allman.
-- Response now includes `method: "keyword" | "ai" | "fallback"` and `matched_keywords?: string[]` so the test sandbox and any future debugging UI can show why a customer landed where they did.
-
-### 4. Customer flow polish
-- `IncomingRequestForm.tsx`: when the classifier returns a template, pre-fill the first `long_text` field with the customer's brief input. Saves them retyping the same description on the structured form (the "Kort om jobbet" / "Kort om projektet" textarea was the redundancy).
+- **In-app productivity refactor on Dashboard.** Replaced the four big KPI filter cards with a slim sticky filter toolbar (Alla / Skickade / Accepterade / Utkast / Arkiverade chips with counts + search + sort dropdown). Toolbar uses `position: sticky; top: 57px;` so it stays accessible while scrolling 200+ quotes. Made the in-app `<Navbar>` `sticky top-0 z-40` so it follows users too. Sort dropdown has 5 options (Senaste först, Äldst, Högst värde, Lägst värde, Kund A–Ö); persists in URL via `?sort=`.
+- **Soft archive system end-to-end.** Migration applied via Supabase MCP: `ALTER TABLE quotes ADD COLUMN archived_at TIMESTAMPTZ NULL` + partial index for fast `WHERE archived_at IS NULL` scans. `useQuotes` filters archived from default; new `useArchivedQuotes()` hook fetches archived only. Two new mutations: `archiveQuote` (soft, sets timestamp) and `restoreQuote` (clears it). `deleteQuote` kept but gated to a "Ta bort permanent" action with AlertDialog confirmation, only visible on archived quotes.
+- **Per-row `···` menu on QuoteCard.** Wrapper changed from `<Link>` to `<Card onClick=navigate>` so dropdown clicks can `stopPropagation` cleanly. Menu items: *Duplicera, Spara som mall, Skicka påminnelse* (only on sent/opened), *Arkivera* (red). Archived view swaps the bottom items to *Återställ* and *Ta bort permanent*. Visa removed (clicking the row already opens detail).
+- **Inline reminder UI.** Each row now renders a yellow inline pill to the **right of the customer name** when reminder is due (sent, >48h, no accept): "Ingen respons efter 48h" + "Skicka påminnelse" button. Replaces the old AlertTriangle icon. Row height stays constant; layout shifts horizontally only. Modal lives at Dashboard level; QuoteCard signals via `onSendReminder` callback.
+- **QuoteDetail menu rebuilt.** "Ta bort offert" → "Arkivera" (with undo toast). Added *Skicka påminnelse* + *Spara som mall*. Archived quotes show *Återställ* in place of *Arkivera*. Quote lookup now searches both `useQuotes` and `useArchivedQuotes` so archived quotes are still openable. Inline *Skicka påminnelse* button added directly to the orange "Ingen respons efter 48h" banner.
+- **Reminder flow.** New `DEFAULT_REMINDER_TEMPLATE` in `lib/emailTemplate.ts`. Reuses the existing `SendQuoteModal` with reminder copy pre-filled — no new edge function. `onSentSuccess` writes a `quote_events` row with `event_type: 'reminder_sent'` and does NOT bump `sent_at`.
+- **Spara som mall = full editor (not a dialog).** First built as an inline checkbox dialog, user rejected it as too constrained. Replaced with `src/pages/TemplateBuilder.tsx` — a focused page that reuses `LineItemEditor` so all line items + materials are fully editable. Pre-fills from source quote, lets user prune/edit/add anything, saves a multi-item template to `quote_templates`. New routes: `/templates/new` (blank) and `/templates/from-quote/:quoteId` (pre-filled). Wired into both QuoteCard's and QuoteDetail's `···` menus.
+- **Marketing-page polish.** `--radius: 0.75rem → 0.2rem` system-wide (sharper corners). MarketingHeader switched from `max-w-6xl mx-auto` to full-width with `pl-32 pr-32` on lg (logo + CTA hug closer to viewport edges). Landing-page hero carousel reordered bygg → vvs → el (so first slide matches first nav link).
+- **Trade page hero overhaul (Bygg, VVS, El).** All three rewritten with the same pattern: 60vh tall, full-bleed `bg-contain bg-right` image on the right with a left-edge mask fading into a horizontal trade-color gradient (sage `rgba(168,200,163)` for El, tan `#c8a079` for Bygg, blue `#7eb6d9` for VVS). Gradient extends to ~96% so the trade color overlays the left portion of the image instead of cutting hard. Text container shifted right via `pl-44` so the gap between copy and image closes.
+- **El page yellow → sage.** Hero gradient swapped from honey `#FDE68A` to sage `#a8c8a3` to tie into the grön-teknik narrative on that page.
 
 ## Current state
 
-- The full formulär feature works end-to-end: customer types brief → classifier picks form by keyword (or AI on tie) → customer fills form with first long_text pre-filled → submission → firm sees lead in Inbox.
-- Standard library is immutable per firm. Firms get their own world of customizations via lazy-copy.
-- Test sandbox in Settings mirrors production behavior including tie surfacing ("X-vägs lika — AI avgör").
-- Verified live: "bygga ett uterum med stora fönster" now routes to Tillbyggnad / utbyggnad with `method=keyword, matched=["uterum"]` — the bygg/allman pruning broke the previous false-positive tie.
+- Filter toolbar live; `?filter=archived` swaps data source to archived view; per-row `···` menu visible on every QuoteCard with proper conditional actions.
+- Archive flow working end-to-end: Arkivera → row disappears, undo toast → Återställ → row reappears. Archived view shows Återställ + Ta bort permanent.
+- Reminder flow working from three places: row inline button, ···  menu on row, ··· menu in QuoteDetail, and inline button on QuoteDetail's banner.
+- Spara som mall opens a full editor at `/templates/from-quote/:id` — confirmed multi-item templates save correctly. `QuoteBuilder.handleTemplateSelect` already maps `default_items[]` so applying multi-item templates also works.
+- Trade page heroes render with new layout on `/bygg`, `/vvs`, `/el`. Sticky elements working on Dashboard.
+- generate-pdf v18 still active on remote (ROT support from previous session).
 
-## Edge functions deployed via MCP this session
+## Commits this session
 
-- `classify-intake-request` v2 (initial keyword-first version) → v3 (tie-break-to-AI). v3 is current.
+Backlog cleared in 11 commits past `ae852fe`:
 
-## Open / parked
+1. `chore(supabase)` — track this week's 5 migrations + gitignore design artifacts.
+2. `feat(forms)` — visible_when + default in dynamic fields (powers ROT follow-up).
+3. `feat(rot)` — ROT-avdrag end-to-end on quotes (Phase 3).
+4. `feat(leads)` — avböj flow with reusable decline template.
+5. `refactor(classify)` — compute score/tier deterministically from sub-scores.
+6. `feat(analytics)` — expanded quote/lead analytics dashboard.
+7. `feat(landing)` — kontakt page + trade-hero overhaul + landing image mask.
+8. `style(marketing)` — radius, header width, pricing theme + flip wording polish.
+9. `feat(dashboard)` — sticky filter toolbar + sort dropdown + sticky navbar.
+10. `feat(quotes)` — soft archive + per-row menu + inline reminder pill.
+11. `feat(templates)` — full-page TemplateBuilder for multi-item templates.
 
-- **Lightweight triggerord-only modal** for "+ lägg till" links on standard form chips — currently opens the full schema editor. Works but heavier than needed. Polish, low priority.
-- **RAG / embeddings work on quote generation** still parked per `future-implementations.local.md`. Not relevant to this session's classifier work — the candidate space is tiny (~30 forms). Real embeddings work belongs to the generate-quote learning system, gated on having an eval harness first.
-- **Keyword tuning policy.** The `fönster` / `dörr` prune is a one-time fix. Firms naturally extend keywords on their custom forms via the UI. If we ever see another false-positive class issue, the tie-break-to-AI usually catches it; if not, the standards can be pruned again.
+The `archived_at` migration is now persisted at `supabase/migrations/20260430120000_add_archived_at_to_quotes.sql` (idempotent, since prod already has the column applied via MCP).
 
-## Notable carryover from prior sessions still open
-- Build `/integritetspolicy`, cookie disclosure
-- Lär dig mer footer link target
-- Hero ImagePlaceholders on `/bygg`, `/vvs`, `/el`
-- Verify 4-tier lead-scoring deploy end-to-end with a real intake
-- Delete dead `src/pages/TradePage.tsx` (still alive — modified to use new chrome — but worth re-checking if it's still doing useful work)
+## What comes next
+
+1. **Fortnox integration** — user's stated next-day priority. Pro-tier killer feature: auto-create draft invoice in Fortnox from accepted quotes.
+2. **AI learning system stress test** — run 50–100 leads through `generate-quote` to verify the 4-layer learning system holds up at volume.
+3. **Outstanding from this session's plan** (still on todo list): bulk select markera-mode on Dashboard; sticky toolbar + per-row ··· + bulk select on Inbox; localize ISO dates app-wide.
+4. **ROT Phase 4 (personnummer + fastighetsbeteckning)** — still on the long-term roadmap. Was deferred pending real craftsman feedback.
+
+## Open questions
+
+- **Templates.tsx edit form vs TemplateBuilder.** The existing Templates list page still uses its own inline edit form that only handles single-item templates. Multi-item templates created via TemplateBuilder save fine but render only the first item when opened in Templates.tsx's inline editor. Should we redirect "edit template" clicks on Templates.tsx to `/templates/:id/edit` (a new route on TemplateBuilder) and retire the inline form?
+- **Reminder rate limiting.** Currently you can send reminder after reminder unbounded. Should we add `last_reminder_sent_at` and gate the button if <24h since last send?
+- **Archived view discoverability.** The 5th chip "Arkiverade" works but is the same visual weight as Alla/Skickade. Is that the right hierarchy or should it be visually de-emphasized (e.g., placed at the far right, smaller text)?
+- **Inbox bulk action UX.** User pre-confirmed the markera-mode pattern (click "Markera" → enters selection mode → click rows to toggle → bottom action bar). Action bar items will be *Markera som hanterad / Avböj / Avbryt*. Confirmed but not yet built.
 
 ## Context that is easy to forget
 
-- **Lazy-copy creation is silent and idempotent.** Hitting "Inaktivera" on a global creates a `company_form_templates` row with the global's snapshot. Editing a custom doesn't recreate. `based_on_template_id` is the link.
-- **The "Standard" badge on a card disappears once the firm forks the schema, not when they just add keywords.** Adding keywords keeps the linked-copy displayed as "Anpassad standard". Editing questions removes the Standard badge entirely.
-- **`UNIQUE (company_id, name)`** on `company_form_templates` is the new constraint. Firms get a friendly error if they try to create two custom forms with the same name. `(company_id, sub_type)` is intentionally not unique anymore.
-- **Customer flow respects firm trades.** A VVS-only firm's customers will never see El forms regardless of how triggerord match — the classifier filters candidates by `firm.primary_trade + secondary_trades + general` first.
-- **All carryover quirks from prior sessions still apply.** Vite on port 8081 with `strictPort: true` (npm run dev OK via Bash run_in_background; preview_* tools fail), no em-dashes in Swedish copy, Inter is the only font, FlipDeck must stay JS-free per-scroll, etc.
+- **`archived_at` migration applied via MCP, not as a local file.** If you migrate environments or rebuild the schema from migrations folder, the column won't exist. Manually create `supabase/migrations/20260430120000_add_archived_at_to_quotes.sql` with the same DDL the MCP applied if needed.
+- **`deleteQuote` is still a hard delete.** Now gated to "Ta bort permanent" on archived quotes only, behind an AlertDialog confirmation. Don't accidentally re-wire it to a primary action.
+- **QuoteCard switched from `<Link>` wrapper to `<Card onClick=navigate>`.** All clickable children (dropdown trigger, dropdown content, reminder button, reminder pill wrapper) call `e.stopPropagation()` to prevent navigation. If you add new clickable children inside QuoteCard, remember the propagation guard.
+- **In-app navbar sticky uses `top-0 z-40`; Dashboard toolbar uses `top-[57px] z-30`.** Match the offset if porting the toolbar to other pages — the navbar height is exactly 57px including its `border-b`.
+- **Templates page form is single-item only.** Multi-item templates from TemplateBuilder save fine, get applied fine in QuoteBuilder, but show only the first item if opened via Templates.tsx's existing edit form. Caveat documented; refactor pending.
+- **The Quotly user count at this stage is 1 (you).** Mock data fallback exists in Dashboard when no real quotes are present — `hasDbQuotes ? activeQuotes.map(transform) : mockQuotes`. Stays useful during demo/dev.
+- **All previous-session caveats still apply** (Vite strictPort:8081 means preview_* MCP can't bind; Supabase MCP namespace `mcp__02d0ae63-...`; edge function deploy file path quirks; `is_labor` is structural not flag-based; no em-dashes in Swedish copy; AnimatePresence on routes fades pages so screenshots taken too quickly may show faded version).
+- **`--radius: 0.2rem` swap is system-wide via CSS variable.** Most components inherit. Some hardcoded `rounded-2xl` / `rounded-xl` instances may still exist (intentional for hero images, FlipDeck cards, etc.). If something looks oddly soft, check for hardcoded radius classes that bypass the var.
