@@ -2,7 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send, Loader2, CheckCircle, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeft, Copy, Edit, CopyPlus, ExternalLink, ChevronDown, Download, Send, Loader2, CheckCircle, MoreHorizontal, Archive, BookTemplate } from 'lucide-react';
 import { downloadQuotePdf } from '@/lib/downloadPdf';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -13,20 +13,22 @@ import { TimelineEvent } from '@/components/TimelineEvent';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useQuotes } from '@/hooks/useQuotes';
+import { useQuotes, useArchivedQuotes } from '@/hooks/useQuotes';
 import { mockQuotes, formatCurrency, formatDate, isReminderDue } from '@/data/mockData';
 import { toast } from 'sonner';
 import { useCompany } from '@/hooks/useCompany';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
 import { CustomerViewPreviewDialog } from '@/components/CustomerViewPreviewDialog';
-import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE } from '@/lib/emailTemplate';
+import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE, DEFAULT_REMINDER_TEMPLATE } from '@/lib/emailTemplate';
 
 export default function QuoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, deleteQuote } = useQuotes();
+  const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, archiveQuote, restoreQuote } = useQuotes();
+  const { quotes: archivedDbQuotes } = useArchivedQuotes();
   const { company } = useCompany();
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
@@ -47,7 +49,8 @@ export default function QuoteDetail() {
   });
 
   const quote = useMemo(() => {
-    const dbQ = dbQuotes.find((q: any) => q.id === id);
+    // Search both active and archived lists so this page works for archived quotes too.
+    const dbQ = dbQuotes.find((q: any) => q.id === id) ?? archivedDbQuotes.find((q: any) => q.id === id);
     if (dbQ) {
       return {
         id: dbQ.id,
@@ -63,6 +66,9 @@ export default function QuoteDetail() {
         actualHours: (dbQ as any).actual_hours ?? null,
         completedAt: (dbQ as any).completed_at ?? null,
         aiPromptText: (dbQ as any).ai_prompt_text ?? null,
+        rotEligible: (dbQ as any).rot_eligible === true,
+        rotDiscountAmount: Number((dbQ as any).rot_discount_amount ?? 0),
+        archivedAt: (dbQ as any).archived_at ?? null,
         validUntil: dbQ.valid_until || '',
         createdAt: dbQ.created_at,
         sentAt: dbQ.sent_at,
@@ -92,7 +98,7 @@ export default function QuoteDetail() {
       };
     }
     return mockQuotes.find((q) => q.id === id);
-  }, [id, dbQuotes]);
+  }, [id, dbQuotes, archivedDbQuotes]);
 
   if (!quote) {
     return (
@@ -117,6 +123,9 @@ export default function QuoteDetail() {
   }, 0);
 
   const total = subtotal + vat;
+  const showRot = (quote as any).rotEligible === true && (quote as any).rotDiscountAmount > 0;
+  const rotDiscount = Number((quote as any).rotDiscountAmount ?? 0);
+  const customerPays = total - rotDiscount;
   const isLocked = ['declined', 'expired'].includes(quote.status);
   const isCompleted = quote.status === 'completed';
   const canEdit = !isLocked && !isCompleted;
@@ -163,17 +172,37 @@ export default function QuoteDetail() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleArchive = async () => {
     try {
-      await deleteQuote.mutateAsync({ quoteId: quote.id });
-      toast.success('Offert borttagen');
+      await archiveQuote.mutateAsync({ quoteId: quote.id });
+      toast.success('Offert arkiverad', {
+        action: {
+          label: 'Återställ',
+          onClick: () => {
+            restoreQuote.mutateAsync({ quoteId: quote.id })
+              .then(() => toast.success('Offert återställd'))
+              .catch((err) => toast.error(err.message || 'Kunde inte återställa'));
+          },
+        },
+      });
       navigate('/');
     } catch (err: any) {
-      toast.error(err.message || 'Kunde inte ta bort offerten');
+      toast.error(err.message || 'Kunde inte arkivera offerten');
     }
   };
 
-  const canDelete = !['accepted', 'completed', 'revised'].includes(quote.status);
+  const handleRestore = async () => {
+    try {
+      await restoreQuote.mutateAsync({ quoteId: quote.id });
+      toast.success('Offert återställd');
+    } catch (err: any) {
+      toast.error(err.message || 'Kunde inte återställa offerten');
+    }
+  };
+
+  const isArchived = !!(quote as any).archivedAt;
+  const canArchive = !isArchived && !['accepted', 'completed', 'revised'].includes(quote.status);
+  const canSendReminder = !isArchived && (quote.status === 'sent' || quote.status === 'opened');
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -206,10 +235,20 @@ export default function QuoteDetail() {
         </Link>
       )}
 
-      {reminderDue && (
+      {reminderDue && !isArchived && (
         <Card className="mb-4 border-warning/50 bg-warning/5 no-print">
-          <CardContent className="p-4 flex items-center gap-3">
-            <span className="text-warning text-sm font-medium">Ingen respons efter 48h - överväg uppföljning</span>
+          <CardContent className="p-4 flex items-center justify-between gap-3">
+            <span className="text-warning text-sm font-medium">Ingen respons efter 48h, överväg uppföljning</span>
+            {canSendReminder && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 shrink-0 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+                onClick={() => setReminderModalOpen(true)}
+              >
+                <Send className="h-3.5 w-3.5" /> Skicka påminnelse
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -255,14 +294,31 @@ export default function QuoteDetail() {
             <DropdownMenuItem className="gap-2 cursor-pointer" onClick={handleDuplicate} disabled={duplicateQuote.isPending}>
               <CopyPlus className="h-4 w-4" /> {duplicateQuote.isPending ? 'Duplicerar...' : 'Duplicera'}
             </DropdownMenuItem>
-            {canDelete && (
+            {!isArchived && (
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate(`/templates/from-quote/${quote.id}`)}>
+                <BookTemplate className="h-4 w-4" /> Spara som mall
+              </DropdownMenuItem>
+            )}
+            {canSendReminder && (
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setReminderModalOpen(true)}>
+                <Send className="h-4 w-4" /> Skicka påminnelse
+              </DropdownMenuItem>
+            )}
+            {isArchived ? (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="gap-2 cursor-pointer text-destructive focus:text-destructive" onClick={handleDelete} disabled={deleteQuote.isPending}>
-                  <Trash2 className="h-4 w-4" /> Ta bort offert
+                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={handleRestore} disabled={restoreQuote.isPending}>
+                  <Archive className="h-4 w-4" /> {restoreQuote.isPending ? 'Återställer...' : 'Återställ'}
                 </DropdownMenuItem>
               </>
-            )}
+            ) : canArchive ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="gap-2 cursor-pointer text-destructive focus:text-destructive" onClick={handleArchive} disabled={archiveQuote.isPending}>
+                  <Archive className="h-4 w-4" /> {archiveQuote.isPending ? 'Arkiverar...' : 'Arkivera'}
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -317,24 +373,31 @@ export default function QuoteDetail() {
                 {quote.items.map((item) => {
                   const mats = (item as any).materials || [];
                   const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+                  const laborTotal = item.quantity * item.unitPrice;
                   return (
                     <div key={item.id} className="py-2 border-b border-border/50 last:border-0">
                       <div className="flex justify-between text-sm">
-                        <div>
-                          <p className="font-medium">{item.description}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
-                        </div>
-                        <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice + matsTotal)}</span>
+                        <p className="font-medium">{item.description}</p>
+                        <span className="font-medium shrink-0 ml-3">{formatCurrency(laborTotal + matsTotal)}</span>
                       </div>
-                      {mats.length > 0 && (
-                        <div className="mt-1 ml-3 space-y-0.5">
-                          {mats.map((m: any) => (
-                            <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
-                              <span>{m.quantity} × {m.name}</span>
-                              <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
-                            </div>
-                          ))}
+                      {laborTotal > 0 && (
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1 pl-3">
+                          <span>Arbete</span>
+                          <span>{formatCurrency(laborTotal)}</span>
                         </div>
+                      )}
+                      {mats.length > 0 && (
+                        <>
+                          <div className="text-xs text-muted-foreground mt-1 pl-3">Material</div>
+                          <div className="space-y-0.5">
+                            {mats.map((m: any) => (
+                              <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-5">
+                                <span>{m.quantity} × {m.name}</span>
+                                <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
                       )}
                     </div>
                   );
@@ -344,6 +407,12 @@ export default function QuoteDetail() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Moms (25%)</span><span>{formatCurrency(vat)}</span></div>
                 <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Totalt</span><span>{formatCurrency(total)}</span></div>
+                {showRot && (
+                  <>
+                    <div className="flex justify-between text-muted-foreground pt-2"><span>ROT-avdrag (30 % av arbete)</span><span>−{formatCurrency(rotDiscount)}</span></div>
+                    <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Kund betalar</span><span>{formatCurrency(customerPays)}</span></div>
+                  </>
+                )}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -354,24 +423,31 @@ export default function QuoteDetail() {
               {quote.items.map((item) => {
                 const mats = (item as any).materials || [];
                 const matsTotal = mats.reduce((s: number, m: any) => s + m.quantity * m.unitPrice, 0);
+                const laborTotal = item.quantity * item.unitPrice;
                 return (
                   <div key={item.id} className="py-2 border-b border-border/50 last:border-0">
                     <div className="flex justify-between text-sm">
-                      <div>
-                        <p className="font-medium">{item.description}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
-                      </div>
-                      <span className="font-medium shrink-0 ml-3">{formatCurrency(item.quantity * item.unitPrice + matsTotal)}</span>
+                      <p className="font-medium">{item.description}</p>
+                      <span className="font-medium shrink-0 ml-3">{formatCurrency(laborTotal + matsTotal)}</span>
                     </div>
-                    {mats.length > 0 && (
-                      <div className="mt-1 ml-3 space-y-0.5">
-                        {mats.map((m: any) => (
-                          <div key={m.id} className="flex justify-between text-xs text-muted-foreground">
-                            <span>{m.quantity} × {m.name}</span>
-                            <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
-                          </div>
-                        ))}
+                    {laborTotal > 0 && (
+                      <div className="flex justify-between text-xs text-muted-foreground mt-1 pl-3">
+                        <span>Arbete</span>
+                        <span>{formatCurrency(laborTotal)}</span>
                       </div>
+                    )}
+                    {mats.length > 0 && (
+                      <>
+                        <div className="text-xs text-muted-foreground mt-1 pl-3">Material</div>
+                        <div className="space-y-0.5">
+                          {mats.map((m: any) => (
+                            <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-5">
+                              <span>{m.quantity} × {m.name}</span>
+                              <span>{formatCurrency(m.quantity * m.unitPrice)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -381,6 +457,12 @@ export default function QuoteDetail() {
               <div className="flex justify-between"><span className="text-muted-foreground">Delsumma</span><span>{formatCurrency(subtotal)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Moms (25%)</span><span>{formatCurrency(vat)}</span></div>
               <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Totalt</span><span>{formatCurrency(total)}</span></div>
+              {showRot && (
+                <>
+                  <div className="flex justify-between text-muted-foreground pt-2"><span>ROT-avdrag (30 % av arbete)</span><span>−{formatCurrency(rotDiscount)}</span></div>
+                  <div className="flex justify-between font-heading font-bold text-lg border-t pt-2"><span>Kund betalar</span><span>{formatCurrency(customerPays)}</span></div>
+                </>
+              )}
             </div>
           </div>
 
@@ -451,6 +533,30 @@ export default function QuoteDetail() {
           } else {
             await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'sent' });
           }
+        }}
+      />
+
+      {/* Reminder modal — same component as initial send, but pre-fills with reminder
+          copy and only logs a 'reminder_sent' event (does not bump sent_at). */}
+      <SendQuoteModal
+        open={reminderModalOpen}
+        onOpenChange={setReminderModalOpen}
+        customerEmail={quote.customerEmail}
+        customerName={quote.customerName}
+        quoteId={quote.id}
+        total={formatCurrency(total)}
+        validUntil={quote.validUntil ? formatDate(quote.validUntil) : ''}
+        defaultMessage={resolveEmailTemplate(DEFAULT_REMINDER_TEMPLATE, {
+          customer_name: quote.customerName,
+          company_name: company?.name || '',
+          valid_until: quote.validUntil ? formatDate(quote.validUntil) : '',
+        })}
+        onSentSuccess={async () => {
+          await supabase.from('quote_events').insert({
+            quote_id: quote.id,
+            event_type: 'reminder_sent',
+          });
+          toast.success('Påminnelse skickad');
         }}
       />
 

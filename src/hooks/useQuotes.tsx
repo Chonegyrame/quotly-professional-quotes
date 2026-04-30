@@ -10,10 +10,13 @@ export function useQuotes() {
     queryKey: ['quotes', company?.id],
     queryFn: async () => {
       if (!company) return [];
+      // Active quotes only — archived (archived_at IS NOT NULL) are loaded
+      // separately via useArchivedQuotes() so they don't bloat the default list.
       const { data, error } = await supabase
         .from('quotes')
         .select('*, quote_items(*, quote_item_materials(*)), quote_events(*)')
         .eq('company_id', company.id)
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -38,6 +41,9 @@ export function useQuotes() {
       ai_prompt_text?: string | null;
       job_size?: number | null;
       job_size_unit?: 'kvm' | 'm' | 'm3' | null;
+      rot_eligible?: boolean | null;
+      customer_rot_remaining_at_quote?: number | null;
+      rot_discount_amount?: number | null;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Get next quote number
@@ -65,8 +71,11 @@ export function useQuotes() {
           ai_prompt_text: input.ai_prompt_text ?? null,
           job_size: input.job_size ?? null,
           job_size_unit: input.job_size_unit ?? null,
+          rot_eligible: input.rot_eligible ?? null,
+          customer_rot_remaining_at_quote: input.customer_rot_remaining_at_quote ?? null,
+          rot_discount_amount: input.rot_discount_amount ?? null,
           sent_at: input.status === 'sent' ? new Date().toISOString() : null,
-        })
+        } as any)
         .select()
         .single();
       if (error) throw error;
@@ -158,6 +167,9 @@ export function useQuotes() {
       keywords?: string[];
       job_size?: number | null;
       job_size_unit?: 'kvm' | 'm' | 'm3' | null;
+      rot_eligible?: boolean | null;
+      customer_rot_remaining_at_quote?: number | null;
+      rot_discount_amount?: number | null;
       items: { description: string; quantity: number; unit_price: number; vat_rate: number }[];
     }) => {
       // Determine the right status after edit
@@ -195,6 +207,9 @@ export function useQuotes() {
         trade: input.trade || 'general',
         job_size: input.job_size ?? null,
         job_size_unit: input.job_size_unit ?? null,
+        rot_eligible: input.rot_eligible ?? null,
+        customer_rot_remaining_at_quote: input.customer_rot_remaining_at_quote ?? null,
+        rot_discount_amount: input.rot_discount_amount ?? null,
       };
       if (finalStatus === 'sent') updates.sent_at = new Date().toISOString();
 
@@ -342,12 +357,57 @@ export function useQuotes() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
   });
+  // Soft archive — sets archived_at = now(). Hides from default list.
+  // Reversible via restoreQuote within the undo toast or from the archived view.
+  const archiveQuote = useMutation({
+    mutationFn: async ({ quoteId }: { quoteId: string }) => {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', quoteId);
+      if (error) throw error;
+      await supabase.from('quote_events').insert({
+        quote_id: quoteId,
+        event_type: 'archived',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['archived-quotes'] });
+    },
+  });
+
+  // Restore an archived quote (clears archived_at). Used by the undo toast
+  // and the per-row action in the archived view.
+  const restoreQuote = useMutation({
+    mutationFn: async ({ quoteId }: { quoteId: string }) => {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ archived_at: null })
+        .eq('id', quoteId);
+      if (error) throw error;
+      await supabase.from('quote_events').insert({
+        quote_id: quoteId,
+        event_type: 'restored',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['archived-quotes'] });
+    },
+  });
+
+  // Hard delete — only callable from the archived view's "Ta bort permanent"
+  // gated action. Use archiveQuote for the standard destructive action instead.
   const deleteQuote = useMutation({
     mutationFn: async ({ quoteId }: { quoteId: string }) => {
       const { error } = await supabase.from('quotes').delete().eq('id', quoteId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['archived-quotes'] });
+    },
   });
 
   const resendQuote = useMutation({
@@ -386,7 +446,29 @@ export function useQuotes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes'] }),
   });
 
-  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuote, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, deleteQuote };
+  return { quotes: query.data ?? [], isLoading: query.isLoading, createQuote, updateQuote, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, archiveQuote, restoreQuote, deleteQuote };
+}
+
+// Hook for the "Visa arkiverade" view — only fetches when enabled (the user
+// has actively switched the filter to archived). Mirrors useQuotes shape.
+export function useArchivedQuotes({ enabled = true }: { enabled?: boolean } = {}) {
+  const { company } = useCompany();
+  const query = useQuery({
+    queryKey: ['archived-quotes', company?.id],
+    queryFn: async () => {
+      if (!company) return [];
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*, quote_items(*, quote_item_materials(*)), quote_events(*)')
+        .eq('company_id', company.id)
+        .not('archived_at', 'is', null)
+        .order('archived_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: enabled && !!company,
+  });
+  return { quotes: query.data ?? [], isLoading: query.isLoading };
 }
 
 // Hook to get a single quote by ID (for edit mode)
