@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   FormFieldRenderer,
   FormField,
+  isFieldVisible,
   FieldValue,
 } from '@/components/FormFieldRenderer';
 
@@ -117,13 +118,28 @@ export default function IncomingRequestForm() {
       );
       if (error) throw new Error(error.message);
       if (!data?.template) throw new Error('Ingen mall returnerades');
-      setTemplate(data.template as Template);
-      // Seed default values from schema shape
+      // Inject default helper text on the job_desc field so the customer
+      // knows the field is for details the structured form doesn't capture,
+      // not for retyping the brief they already wrote.
+      const rawTemplate = data.template as Template;
+      const patchedFields = (rawTemplate.form_schema?.fields ?? []).map((f: FormField) =>
+        f.id === 'job_desc' && !f.help
+          ? { ...f, help: 'Lägg gärna till väsentlig information som formuläret inte täcker.' }
+          : f,
+      );
+      const patchedTemplate: Template = {
+        ...rawTemplate,
+        form_schema: { ...rawTemplate.form_schema, fields: patchedFields },
+      };
+      setTemplate(patchedTemplate);
+      // Seed default values from schema shape. Honor field-level `default`
+      // so templates can prefill (e.g. ROT-utrymme starts at 50 000 kr).
       const defaults: Record<string, FieldValue> = {};
-      const fields = (data.template.form_schema?.fields ?? []) as FormField[];
+      const fields = patchedFields;
       for (const f of fields) {
         if (f.type === 'multi_select') defaults[f.id] = [];
         else if (f.type === 'file_upload') defaults[f.id] = [];
+        else if (f.default !== undefined && f.default !== null) defaults[f.id] = String(f.default);
         else defaults[f.id] = '';
       }
       // Pre-fill the first long_text field with the customer's brief input
@@ -308,6 +324,9 @@ export default function IncomingRequestForm() {
                 Skriv kort vad du behöver hjälp med. Vi väljer rätt formulär åt dig
                 baserat på beskrivningen.
               </p>
+              <p className="text-xs text-muted-foreground">
+                Det här behöver inte vara en utförlig beskrivning, 1-2 meningar räcker för att fastställa rätt jobbtyp.
+              </p>
               <Textarea
                 value={freeText}
                 onChange={(e) => setFreeText(e.target.value)}
@@ -349,14 +368,16 @@ export default function IncomingRequestForm() {
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
-                {template.form_schema.fields.map((field) => (
-                  <FormFieldRenderer
-                    key={field.id}
-                    field={field}
-                    value={values[field.id] ?? ''}
-                    onChange={handleFieldChange}
-                  />
-                ))}
+                {template.form_schema.fields
+                  .filter((field) => isFieldVisible(field, values))
+                  .map((field) => (
+                    <FormFieldRenderer
+                      key={field.id}
+                      field={field}
+                      value={values[field.id] ?? ''}
+                      onChange={handleFieldChange}
+                    />
+                  ))}
               </CardContent>
             </Card>
 

@@ -33,6 +33,20 @@ export interface FormField {
   options?: FieldOption[];
   required?: boolean;
   help?: string;
+  /** Default value applied when the form is first rendered. */
+  default?: string | number;
+  /** When set, the field is only rendered if the referenced field's value matches. */
+  visible_when?: { field: string; value: string };
+}
+
+/** True when the field has no visibility condition or the condition is met. */
+export function isFieldVisible(
+  field: FormField,
+  values: Record<string, FieldValue>,
+): boolean {
+  if (!field.visible_when) return true;
+  const target = values[field.visible_when.field];
+  return target === field.visible_when.value;
 }
 
 export type FieldValue = string | number | string[] | File[] | null;
