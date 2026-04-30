@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { TeamSection } from '@/components/TeamSection';
 import { BusinessProfileSection } from '@/components/BusinessProfileSection';
+import { FortnoxSection } from '@/components/FortnoxSection';
 import { FormularLanding } from '@/components/FormularLanding';
 import { FormularTradeView } from '@/components/FormularTradeView';
 import { FormularEditorModal } from '@/components/FormularEditorModal';
@@ -453,6 +454,8 @@ export default function Settings() {
         <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleSave} disabled={updateCompany.isPending}>
           <Save className="h-4 w-4" /> Spara inställningar
         </Button>
+
+        <FortnoxSection />
 
         <TeamSection />
       </div>

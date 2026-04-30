@@ -31,6 +31,7 @@ import PricingPage from "./pages/PricingPage";
 import AnvandarvillkorPage from "./pages/AnvandarvillkorPage";
 import FragorOchSvarPage from "./pages/FragorOchSvarPage";
 import KontaktPage from "./pages/KontaktPage";
+import FortnoxCallback from "./pages/FortnoxCallback";
 import VvsPage from "./pages/VvsPage";
 import ElPage from "./pages/ElPage";
 import IncomingRequestForm from "./pages/IncomingRequestForm";
@@ -106,6 +107,7 @@ function AppRoutes() {
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/reset-password" element={<ResetPassword />} />
+        <Route path="/auth/fortnox/callback" element={<ProtectedRoute><FortnoxCallback /></ProtectedRoute>} />
         <Route path="/q/:id" element={<CustomerView />} />
         <Route path="/offert/:firmSlug" element={<IncomingRequestForm />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />

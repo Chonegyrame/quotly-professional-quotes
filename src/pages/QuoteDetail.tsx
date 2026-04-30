@@ -20,6 +20,8 @@ import { useCompany } from '@/hooks/useCompany';
 import { SendQuoteModal } from '@/components/SendQuoteModal';
 import { CustomerViewPreviewDialog } from '@/components/CustomerViewPreviewDialog';
 import { resolveEmailTemplate, DEFAULT_EMAIL_TEMPLATE, DEFAULT_REMINDER_TEMPLATE } from '@/lib/emailTemplate';
+import { useFortnoxConnection } from '@/hooks/useFortnoxConnection';
+import { Plug } from 'lucide-react';
 
 export default function QuoteDetail() {
   const { id } = useParams();
@@ -27,6 +29,7 @@ export default function QuoteDetail() {
   const { quotes: dbQuotes, updateQuoteStatus, duplicateQuote, completeQuote, resendQuote, archiveQuote, restoreQuote } = useQuotes();
   const { quotes: archivedDbQuotes } = useArchivedQuotes();
   const { company } = useCompany();
+  const { status: fortnoxStatus, sendInvoice: sendFortnoxInvoice } = useFortnoxConnection();
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -69,6 +72,8 @@ export default function QuoteDetail() {
         rotEligible: (dbQ as any).rot_eligible === true,
         rotDiscountAmount: Number((dbQ as any).rot_discount_amount ?? 0),
         archivedAt: (dbQ as any).archived_at ?? null,
+        fortnoxInvoiceNumber: (dbQ as any).fortnox_invoice_number ?? null,
+        fortnoxSyncedAt: (dbQ as any).fortnox_synced_at ?? null,
         validUntil: dbQ.valid_until || '',
         createdAt: dbQ.created_at,
         sentAt: dbQ.sent_at,
@@ -268,6 +273,37 @@ export default function QuoteDetail() {
           <Button size="sm" className="gap-1.5 shrink-0 bg-green-600 hover:bg-green-700 text-white" onClick={() => setCompleteModalOpen(true)}>
             <CheckCircle className="h-3.5 w-3.5" /> Markera som slutförd
           </Button>
+        )}
+        {quote.status === 'accepted' && fortnoxStatus?.connected && !quote.fortnoxInvoiceNumber && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 shrink-0"
+            onClick={() => {
+              if (!quote.id) return;
+              sendFortnoxInvoice.mutate(quote.id, {
+                onSuccess: (res) =>
+                  toast.success(
+                    `Synkad till Fortnox · #${res.fortnox_invoice_number}`,
+                  ),
+                onError: (err) => toast.error((err as Error).message),
+              });
+            }}
+            disabled={sendFortnoxInvoice.isPending}
+          >
+            {sendFortnoxInvoice.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plug className="h-3.5 w-3.5" />
+            )}
+            {sendFortnoxInvoice.isPending ? 'Skickar...' : 'Skicka till Fortnox'}
+          </Button>
+        )}
+        {quote.fortnoxInvoiceNumber && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success shrink-0">
+            <Plug className="h-3 w-3" />
+            Synkad till Fortnox · #{quote.fortnoxInvoiceNumber}
+          </span>
         )}
         <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={copyLink}>
           <Copy className="h-3.5 w-3.5" /> Kopiera länk
