@@ -632,7 +632,10 @@ Deno.serve(async (req: Request) => {
     if (ipResp) return ipResp;
 
     // --- Parse body ---
-    const { text, image, company_id, trade, job_size, job_size_unit, request_id } = await req.json() as {
+    const {
+      text, image, company_id, trade, job_size, job_size_unit, request_id,
+      rot_eligible, customer_rot_remaining,
+    } = await req.json() as {
       text?: string;
       image?: string;
       company_id: string;
@@ -640,6 +643,9 @@ Deno.serve(async (req: Request) => {
       job_size?: number | null;
       job_size_unit?: "kvm" | "m" | "m3" | null;
       request_id?: string;
+      // ROT context, optional. Customer self-reported on the intake form.
+      rot_eligible?: boolean;
+      customer_rot_remaining?: number | null;
     };
 
     if (!company_id || !trade) {
@@ -1123,6 +1129,34 @@ Returnera ENBART giltig JSON utan markdown, kodblock eller kommentarer:
     }
     if (repairedRowCount > 0) {
       console.log(`Repaired ${repairedRowCount} inconsistent material rows post-override`);
+    }
+
+    // ROT cap math — deterministic, not delegated to the AI. Applied
+    // after Claude returns items so we use the actual labor numbers.
+    // Formula (2026 rule): rot = min(0.30 × labor_inc_moms, customer_cap).
+    // Materials never count toward ROT. labor_inc_moms uses 25 % moms when
+    // the item is marked include_vat=true (the standard for hantverkartjänster).
+    const ROT_RATE = 0.30;
+    const ROT_CAP_DEFAULT = 50_000;
+
+    if (rot_eligible) {
+      let totalLaborIncMoms = 0;
+      for (const item of (parsed.items ?? [])) {
+        const labor = Number(item?.labor_price) || 0;
+        const vatMultiplier = item?.include_vat === false ? 1.0 : 1.25;
+        totalLaborIncMoms += labor * vatMultiplier;
+      }
+      const cap = typeof customer_rot_remaining === "number" && customer_rot_remaining >= 0
+        ? customer_rot_remaining
+        : ROT_CAP_DEFAULT;
+      const fullDiscount = Math.round(totalLaborIncMoms * ROT_RATE);
+      parsed.rot_eligible = true;
+      parsed.customer_rot_remaining = cap;
+      parsed.rot_discount_amount = Math.min(fullDiscount, cap);
+    } else {
+      parsed.rot_eligible = false;
+      parsed.customer_rot_remaining = null;
+      parsed.rot_discount_amount = null;
     }
 
     // Dev observability: return the full assembled prompt so the frontend

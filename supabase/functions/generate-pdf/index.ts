@@ -118,6 +118,7 @@ Deno.serve(async (req: Request) => {
       .select(`
         id, quote_number, customer_name, customer_email, customer_phone,
         customer_address, notes, valid_until, created_at, company_id,
+        rot_eligible, customer_rot_remaining_at_quote, rot_discount_amount,
         quote_items(id, description, quantity, unit_price, vat_rate, sort_order,
           quote_item_materials(id, name, quantity, unit_price, unit)
         ),
@@ -154,6 +155,15 @@ Deno.serve(async (req: Request) => {
     }, 0);
 
     const total = subtotal + vat;
+
+    // ROT display reads the persisted discount from the quote row so the PDF
+    // matches CustomerView exactly, no recomputation here.
+    // deno-lint-ignore no-explicit-any
+    const q: any = quote as any;
+    const rotEligible = q.rot_eligible === true;
+    const rotDiscount = Number(q.rot_discount_amount ?? 0);
+    const customerPays = total - rotDiscount;
+    const showRot = rotEligible && rotDiscount > 0;
 
     // === BUILD PDF ===
     const pdfDoc = await PDFDocument.create();
@@ -315,7 +325,11 @@ Deno.serve(async (req: Request) => {
       const itemTotal = laborTotal + matsTotal;
 
       const descLines = wrapText(item.description ?? "", fontB, 10, CONTENT_W * 0.68);
-      const itemH = descLines.length * 13 + (item.unit_price > 0 ? 13 : 0) + mats.length * 12 + 16;
+      const itemH = descLines.length * 13
+        + (item.unit_price > 0 ? 13 : 0)
+        + (mats.length > 0 ? 12 : 0)
+        + mats.length * 12
+        + 16;
       checkPage(itemH);
 
       // Description + total
@@ -334,16 +348,20 @@ Deno.serve(async (req: Request) => {
         cur -= 12;
       }
 
-      // Material lines
-      for (const m of mats) {
-        const matLabel = `${m.quantity} \u00d7 ${m.name}`;
-        const matLines = wrapText(matLabel, font, 8.5, CONTENT_W * 0.72);
-        for (let ml = 0; ml < matLines.length; ml++) {
-          dt(matLines[ml], MARGIN + 18, cur, 8.5, false, GRAY);
-          if (ml === 0) {
-            dtr(fmtSEK(m.quantity * m.unit_price), PAGE_W - MARGIN, cur, 8.5, false, GRAY);
+      // Material section
+      if (mats.length > 0) {
+        dt("Material", MARGIN + 10, cur, 8.5, false, GRAY);
+        cur -= 12;
+        for (const m of mats) {
+          const matLabel = `${m.quantity} \u00d7 ${m.name}`;
+          const matLines = wrapText(matLabel, font, 8.5, CONTENT_W * 0.72);
+          for (let ml = 0; ml < matLines.length; ml++) {
+            dt(matLines[ml], MARGIN + 18, cur, 8.5, false, GRAY);
+            if (ml === 0) {
+              dtr(fmtSEK(m.quantity * m.unit_price), PAGE_W - MARGIN, cur, 8.5, false, GRAY);
+            }
+            cur -= 12;
           }
-          cur -= 12;
         }
       }
 
@@ -354,7 +372,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // === SUMMARY ===
-    checkPage(85);
+    checkPage(showRot ? 145 : 85);
     cur -= 4;
     const sumX = PAGE_W - MARGIN - 210;
 
@@ -378,6 +396,26 @@ Deno.serve(async (req: Request) => {
     dt("Totalt inkl. moms", sumX, cur, 12, true);
     dtr(fmtSEK(total), PAGE_W - MARGIN, cur, 12, true);
     cur -= 22;
+
+    if (showRot) {
+      // ASCII hyphen used intentionally — Helvetica's WinAnsi encoding does
+      // not include U+2212 (mathematical minus), which would break embed.
+      dt("ROT-avdrag (30 % av arbete)", sumX, cur, 9, false, GRAY);
+      dtr(`- ${fmtSEK(rotDiscount)}`, PAGE_W - MARGIN, cur, 9, false, GRAY);
+      cur -= 10;
+
+      pg.drawLine({
+        start: { x: sumX, y: cur },
+        end: { x: PAGE_W - MARGIN, y: cur },
+        thickness: 1.2,
+        color: rgb(0.15, 0.15, 0.15),
+      });
+      cur -= 15;
+
+      dt("Du betalar", sumX, cur, 12, true);
+      dtr(fmtSEK(customerPays), PAGE_W - MARGIN, cur, 12, true);
+      cur -= 22;
+    }
 
     // === NOTES ===
     if ((quote as any).notes) {

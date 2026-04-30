@@ -146,11 +146,27 @@ export function useGenerateQuoteFromRequest() {
       const text = parts.join('\n\n');
       const trade = profile?.primary_trade ?? 'general';
 
+      // Extract ROT context from the customer's intake answers so the
+      // edge function can compute the discount cap deterministically.
+      const answers = request.submitted_answers ?? {};
+      const rot_eligible = answers.rot === 'ja';
+      const rotRaw = answers.rot_utrymme_kvar;
+      const rotParsed = typeof rotRaw === 'string' ? parseInt(rotRaw, 10) : Number(rotRaw);
+      const customer_rot_remaining = rot_eligible && Number.isFinite(rotParsed) && rotParsed >= 0
+        ? rotParsed
+        : null;
+
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
 
       const { data, error } = await supabase.functions.invoke('generate-quote', {
-        body: { text, company_id: company.id, trade },
+        body: {
+          text,
+          company_id: company.id,
+          trade,
+          rot_eligible,
+          customer_rot_remaining,
+        },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
 

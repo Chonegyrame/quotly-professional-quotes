@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { StepIndicator } from '@/components/StepIndicator';
 import { LineItemEditor } from '@/components/quote-builder/LineItemEditor';
 import { TemplateSelector } from '@/components/quote-builder/TemplateSelector';
@@ -65,6 +66,12 @@ export default function QuoteBuilder() {
   const [jobSize, setJobSize] = useState<number | null>(null);
   const [jobSizeUnit, setJobSizeUnit] = useState<'kvm' | 'm' | 'm3' | null>(null);
 
+  // ROT-avdrag state. rotEligible reflects the customer's intake answer
+  // (or the firm's manual override). customerRotRemaining is the customer's
+  // self-reported cap; falls back to the 50 000 kr annual cap when not set.
+  const [rotEligible, setRotEligible] = useState<boolean>(false);
+  const [customerRotRemaining, setCustomerRotRemaining] = useState<number>(50_000);
+
   useEffect(() => {
     if (isEditMode && existingQuote && !initialized) {
       setCustomerName(existingQuote.customer_name);
@@ -105,6 +112,12 @@ export default function QuoteBuilder() {
         })),
       }));
       if (quoteItems.length > 0) setItems(quoteItems);
+      // Restore ROT state from the saved quote so editing keeps the same context.
+      if (typeof (existingQuote as any).rot_eligible === 'boolean') {
+        setRotEligible((existingQuote as any).rot_eligible);
+      }
+      const savedCap = (existingQuote as any).customer_rot_remaining_at_quote;
+      if (typeof savedCap === 'number') setCustomerRotRemaining(savedCap);
       setInitialized(true);
     }
   }, [isEditMode, existingQuote, initialized]);
@@ -144,6 +157,12 @@ export default function QuoteBuilder() {
         })),
       }));
       if (mapped.length > 0) setItems(mapped);
+      // Carry over ROT context from the lead so the firm sees the same
+      // discount the AI computed. Firm can still toggle / edit before save.
+      if (typeof aiData.rot_eligible === 'boolean') setRotEligible(aiData.rot_eligible);
+      if (typeof aiData.customer_rot_remaining === 'number') {
+        setCustomerRotRemaining(aiData.customer_rot_remaining);
+      }
       setInitialized(true);
     }
   }, [location.state, isEditMode, initialized]);
@@ -200,6 +219,20 @@ export default function QuoteBuilder() {
   );
   const total = subtotal + vat;
 
+  // ROT-avdrag (2026 rule): 30 % of labor inc moms, capped at the customer's
+  // remaining ROT-utrymme. Materials never count. Recomputed live as labor
+  // changes so the firm sees the discount react to edits.
+  const ROT_RATE = 0.30;
+  const totalLaborIncMoms = items.reduce(
+    (sum, item) => sum + item.laborPrice * (item.includeVat ? 1 + vatRate : 1),
+    0,
+  );
+  const rotDiscountUncapped = Math.round(totalLaborIncMoms * ROT_RATE);
+  const rotDiscount = rotEligible
+    ? Math.min(rotDiscountUncapped, Math.max(0, customerRotRemaining))
+    : 0;
+  const customerPays = total - rotDiscount;
+
   const marginAmount = subtotal - totalMaterialCost - totalLaborCost;
   const marginPercent = subtotal > 0 ? (marginAmount / subtotal) * 100 : 0;
 
@@ -254,6 +287,9 @@ export default function QuoteBuilder() {
         ai_prompt_text: aiSuggestions?.prompt_text ?? null,
         job_size: hasSize ? jobSize : null,
         job_size_unit: hasSize ? jobSizeUnit : null,
+        rot_eligible: rotEligible,
+        customer_rot_remaining_at_quote: rotEligible ? customerRotRemaining : null,
+        rot_discount_amount: rotEligible ? rotDiscount : null,
         items: quoteItems.map((qi) => ({
           description: qi.description,
           quantity: qi.quantity,
@@ -570,6 +606,51 @@ export default function QuoteBuilder() {
           </Card>
 
           <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">ROT-avdrag</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Tillämpa ROT-avdrag på denna offert
+                  </p>
+                </div>
+                <Switch
+                  checked={rotEligible}
+                  onCheckedChange={setRotEligible}
+                />
+              </div>
+              {rotEligible && (
+                <div className="space-y-2 pt-1">
+                  <div>
+                    <Label htmlFor="rot-cap">Kundens kvarvarande ROT-utrymme i år (kr)</Label>
+                    <Input
+                      id="rot-cap"
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={customerRotRemaining}
+                      onChange={(e) => setCustomerRotRemaining(parseInt(e.target.value, 10) || 0)}
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Kundens egen uppgift, inte verifierat mot Skatteverket.
+                    </p>
+                  </div>
+                  <div className="flex justify-between text-sm pt-1 border-t">
+                    <span className="text-muted-foreground">Beräknat ROT-avdrag (30 % av arbete)</span>
+                    <span className="font-medium">{formatCurrency(rotDiscount)}</span>
+                  </div>
+                  {rotDiscountUncapped > rotDiscount && (
+                    <p className="text-xs text-warning">
+                      Avdraget begränsas av kundens kvarvarande utrymme ({formatCurrency(customerRotRemaining)}).
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardContent className="p-4 space-y-2">
               <h3 className="font-semibold">Marginal (live)</h3>
               <div className="flex justify-between text-sm">
@@ -605,6 +686,21 @@ export default function QuoteBuilder() {
                 <span>Total</span>
                 <span>{formatCurrency(total)}</span>
               </div>
+              {rotEligible && (
+                <>
+                  <div className="flex justify-between text-sm mt-2 text-muted-foreground">
+                    <span>ROT-avdrag (30 % av arbete)</span>
+                    <span>−{formatCurrency(rotDiscount)}</span>
+                  </div>
+                  <div className="flex justify-between font-heading font-bold text-lg border-t pt-2 mt-2">
+                    <span>Kund betalar</span>
+                    <span>{formatCurrency(customerPays)}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+                    Beloppet baseras på kundens uppgifter, inte verifierat mot Skatteverket.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -658,7 +754,8 @@ export default function QuoteBuilder() {
               {items
                 .filter((i) => i.description)
                 .map((item) => {
-                  const matsTotal = item.materials.reduce(
+                  const namedMaterials = item.materials.filter((m) => m.name);
+                  const matsTotal = namedMaterials.reduce(
                     (sum, material) => sum + material.quantity * material.unitPrice,
                     0
                   );
@@ -674,24 +771,27 @@ export default function QuoteBuilder() {
                           <span>{formatCurrency(item.laborPrice)}</span>
                         </div>
                       )}
-                      {item.materials
-                        .filter((m) => m.name)
-                        .map((material) => (
-                          <div
-                            key={material.id}
-                            className="flex justify-between text-xs text-muted-foreground pl-3"
-                          >
-                            <span>
-                              {material.quantity} × {material.name}
-                            </span>
-                            <span>{formatCurrency(material.quantity * material.unitPrice)}</span>
-                          </div>
-                        ))}
-                      {matsTotal > 0 && (
-                        <div className="flex justify-between text-xs text-muted-foreground pt-1 pl-3">
-                          <span>Materialsumma</span>
-                          <span>{formatCurrency(matsTotal)}</span>
-                        </div>
+                      {namedMaterials.length > 0 && (
+                        <>
+                          <div className="text-xs text-muted-foreground mt-1">Material</div>
+                          {namedMaterials.map((material) => (
+                            <div
+                              key={material.id}
+                              className="flex justify-between text-xs text-muted-foreground pl-3"
+                            >
+                              <span>
+                                {material.quantity} × {material.name}
+                              </span>
+                              <span>{formatCurrency(material.quantity * material.unitPrice)}</span>
+                            </div>
+                          ))}
+                          {matsTotal > 0 && (
+                            <div className="flex justify-between text-xs text-muted-foreground pt-1 pl-3">
+                              <span>Materialsumma</span>
+                              <span>{formatCurrency(matsTotal)}</span>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   );
@@ -710,6 +810,21 @@ export default function QuoteBuilder() {
                   <span>Total</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
+                {rotEligible && (
+                  <>
+                    <div className="flex justify-between text-muted-foreground pt-2">
+                      <span>ROT-avdrag (30 % av arbete)</span>
+                      <span>−{formatCurrency(rotDiscount)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-lg border-t pt-2">
+                      <span>Kund betalar</span>
+                      <span>{formatCurrency(customerPays)}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground italic pt-1 leading-relaxed">
+                      Beloppet baseras på kundens uppgifter, inte verifierat mot Skatteverket.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="mt-4 border-t pt-3 space-y-1 text-sm">

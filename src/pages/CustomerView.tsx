@@ -96,6 +96,12 @@ export default function CustomerView() {
 
   const total = subtotal + vat;
 
+  // ROT display reads the persisted discount from the quote row so the customer
+  // sees exactly what the firm sent. We do not recompute here.
+  const rotEligible = (quote as any).rot_eligible === true;
+  const rotDiscount = Number((quote as any).rot_discount_amount ?? 0);
+  const customerPays = total - rotDiscount;
+
   const handleAccept = async () => {
     // In preview mode, skip the DB write but still flip the local state so the
     // contractor can see what the success screen looks like.
@@ -311,12 +317,17 @@ export default function CustomerView() {
                         <span>{formatCurrency(laborTotal)}</span>
                       </div>
                     )}
-                    {mats.map((m: any) => (
-                      <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-5 mb-0.5">
-                        <span className="truncate pr-2">{m.quantity} × {m.name}</span>
-                        <span className="shrink-0">{formatCurrency(m.quantity * m.unit_price)}</span>
-                      </div>
-                    ))}
+                    {mats.length > 0 && (
+                      <>
+                        <div className="text-xs text-muted-foreground pl-3 mt-1 mb-0.5">Material</div>
+                        {mats.map((m: any) => (
+                          <div key={m.id} className="flex justify-between text-xs text-muted-foreground pl-5 mb-0.5">
+                            <span className="truncate pr-2">{m.quantity} × {m.name}</span>
+                            <span className="shrink-0">{formatCurrency(m.quantity * m.unit_price)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -337,6 +348,19 @@ export default function CustomerView() {
                 <span>Totalt inkl. moms</span>
                 <span>{formatCurrency(total)}</span>
               </div>
+              {rotEligible && rotDiscount > 0 && (
+                <>
+                  <div className="flex justify-between text-muted-foreground pt-2">
+                    <span>ROT-avdrag (30 % av arbete)</span>
+                    <span>−{formatCurrency(rotDiscount)}</span>
+                  </div>
+                  <div className="h-[1.5px] bg-stone-700 my-1.5" />
+                  <div className="flex justify-between font-bold text-base">
+                    <span>Du betalar</span>
+                    <span>{formatCurrency(customerPays)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Notes + estimated time */}
