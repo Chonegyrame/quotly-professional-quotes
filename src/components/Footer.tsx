@@ -45,11 +45,7 @@ export function Footer() {
               Support
             </div>
             <ul className="space-y-2.5 text-sm text-stone-900">
-              <li>
-                <a href="mailto:quotly.se@gmail.com" className="transition-colors hover:text-orange-700">
-                  quotly.se@gmail.com
-                </a>
-              </li>
+              <li><Link to="/kontakt" className="transition-colors hover:text-orange-700">Kontakta oss</Link></li>
               <li><Link to="/fragor-och-svar" className="transition-colors hover:text-orange-700">Frågor och svar</Link></li>
               <li><Link to="/anvandarvillkor" className="transition-colors hover:text-orange-700">Användarvillkor</Link></li>
               <li><a href="#" className="transition-colors hover:text-orange-700">Integritetspolicy</a></li>

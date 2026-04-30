@@ -295,47 +295,71 @@ function formatKr(n: number) {
 
 export default function VvsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white text-foreground">
+    <div className="min-h-screen bg-white text-foreground">
       <MarketingHeader />
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.25, 0.4, 0, 1] }}
-          >
-            <span className="inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent mb-4">
+      {/* Hero — half-height, image fades into the water-blue gradient via mask */}
+      <section className="relative h-[60vh] min-h-[520px] overflow-hidden">
+        <div
+          className="absolute inset-y-0 right-0 left-[28%] bg-contain bg-right bg-no-repeat"
+          style={{
+            backgroundImage: 'url(/bilder/vvs-page-hero.jpg)',
+            maskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 12%, black 28%)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 12%, black 28%)',
+          }}
+        />
+
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(to right, rgba(126,182,217,0.95) 0%, rgba(126,182,217,0.95) 40%, rgba(126,182,217,0.75) 55%, rgba(126,182,217,0.45) 70%, rgba(126,182,217,0.2) 85%, transparent 96%)',
+          }}
+        />
+
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-1/2 pl-20 sm:pl-32 lg:pl-44 pr-6">
+            <motion.span
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.4, 0, 1] }}
+              className="inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent mb-4"
+            >
               VVS
-            </span>
-            <h1 className="font-heading text-2xl font-bold text-foreground sm:text-3xl lg:text-4xl mb-6">
+            </motion.span>
+            <motion.h1
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2, ease: [0.25, 0.4, 0, 1] }}
+              className="font-heading text-3xl font-bold leading-tight text-foreground sm:text-4xl lg:text-5xl"
+            >
               Akutjobb och stora projekt. <br className="hidden sm:inline" />Offerter på minuter.
-            </h1>
-            <p className="max-w-xl text-lg text-muted-foreground mb-10">
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.4, ease: [0.25, 0.4, 0, 1] }}
+              className="mt-4 max-w-xl text-base text-stone-700 sm:text-lg"
+            >
               Quotly skiljer akutjobben från de planerade och bygger rätt offert för båda.
               Värmepumpsbyte, stambyte eller läcka i diskbänken, allt i samma flöde.
-            </p>
-            <Link to="/auth?signup=true">
-              <motion.div
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="inline-block"
-              >
-                <Button size="lg" className="gap-2 bg-accent text-white hover:bg-accent/90">
-                  Kom igång gratis
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-              </motion.div>
-            </Link>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: [0.25, 0.4, 0, 1] }}
-          >
-            <ImagePlaceholder className="aspect-[4/3]" />
-          </motion.div>
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.6, ease: [0.25, 0.4, 0, 1] }}
+              className="mt-8"
+            >
+              <Link to="/auth?signup=true">
+                <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} className="inline-block">
+                  <Button size="lg" className="gap-2 bg-accent text-white hover:bg-accent/90 px-8 text-base shadow-lg shadow-accent/30">
+                    Kom igång gratis
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </motion.div>
+              </Link>
+            </motion.div>
+          </div>
         </div>
       </section>
 

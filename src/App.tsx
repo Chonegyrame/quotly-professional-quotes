@@ -29,6 +29,7 @@ import ByggPage from "./pages/ByggPage";
 import PricingPage from "./pages/PricingPage";
 import AnvandarvillkorPage from "./pages/AnvandarvillkorPage";
 import FragorOchSvarPage from "./pages/FragorOchSvarPage";
+import KontaktPage from "./pages/KontaktPage";
 import VvsPage from "./pages/VvsPage";
 import ElPage from "./pages/ElPage";
 import IncomingRequestForm from "./pages/IncomingRequestForm";
@@ -81,7 +82,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user } = useAuth();
   const tradeRoutes = ['/bygg', '/vvs', '/el', '/ovrigt'];
-  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/') || location.pathname === '/pris' || location.pathname === '/anvandarvillkor' || location.pathname === '/fragor-och-svar' || tradeRoutes.includes(location.pathname);
+  const isPublicRoute = (location.pathname === '/' && !user) || location.pathname.startsWith('/q/') || location.pathname.startsWith('/auth') || location.pathname.startsWith('/invite/') || location.pathname.startsWith('/offert/') || location.pathname === '/pris' || location.pathname === '/anvandarvillkor' || location.pathname === '/fragor-och-svar' || location.pathname === '/kontakt' || tradeRoutes.includes(location.pathname);
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -116,6 +117,7 @@ function AppRoutes() {
         <Route path="/pris" element={<PricingPage />} />
         <Route path="/anvandarvillkor" element={<AnvandarvillkorPage />} />
         <Route path="/fragor-och-svar" element={<FragorOchSvarPage />} />
+        <Route path="/kontakt" element={<KontaktPage />} />
         <Route path="/quotes/new" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />
         <Route path="/quotes/:id" element={<ProtectedRoute><QuoteDetail /></ProtectedRoute>} />
         <Route path="/quotes/:id/edit" element={<ProtectedRoute><QuoteBuilder /></ProtectedRoute>} />

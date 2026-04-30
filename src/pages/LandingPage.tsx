@@ -878,8 +878,17 @@ export default function LandingPage() {
 
       {/* ── Split Hero ── */}
       <section className="relative h-[calc(100vh-4rem)] overflow-hidden">
-        {/* Image carousel — fills the full section behind the grey panel */}
-        <div className="absolute inset-0">
+        {/* Image carousel — constrained to the right side so bg-cover fits
+            the source ~4:3 images cleanly, with the dark parallelogram
+            gradient diagonally hiding the left seam. Mask fades the left
+            edge so it blends into the parallelogram instead of cutting hard. */}
+        <div
+          className="absolute inset-y-0 right-0 left-[28%] bg-stone-900"
+          style={{
+            maskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 12%, black 28%)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 12%, black 28%)',
+          }}
+        >
           <AnimatePresence mode="sync">
             <motion.div
               key={heroSlide}
@@ -892,24 +901,20 @@ export default function LandingPage() {
               {heroSlide === 0 && (
                 <div
                   className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: 'url(/zaptec.jpg)' }}
+                  style={{ backgroundImage: 'url(/bilder/bygg-hero.jpg)' }}
                 />
               )}
               {heroSlide === 1 && (
-                <div className="absolute inset-0 flex items-center justify-end bg-stone-500 pr-12">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-300 mb-2">Byt ut mot riktig bild</p>
-                    <p className="text-2xl font-bold text-white">VVS-tekniker</p>
-                  </div>
-                </div>
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: 'url(/bilder/vvs-hero.jpg)' }}
+                />
               )}
               {heroSlide === 2 && (
-                <div className="absolute inset-0 flex items-center justify-end bg-stone-400 pr-12">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-stone-200 mb-2">Byt ut mot riktig bild</p>
-                    <p className="text-2xl font-bold text-white">Byggare</p>
-                  </div>
-                </div>
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: 'url(/bilder/el-hero.jpg)' }}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -965,16 +970,23 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Solid fill below Läs mer — matches warm section, no gradient */}
+        {/* Solid fill below Läs mer — matches the fixed gradient on the
+            section below so the seam between hero and "Bättre leads" is invisible. */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 h-16"
-          style={{ backgroundColor: '#F8F6F3' }}
+          style={{
+            background:
+              'linear-gradient(to bottom, #b8b3aa 0%, #b8b3aa 15%, #faf8f4 50%, #b8b3aa 85%, #b8b3aa 100%)',
+            backgroundAttachment: 'fixed',
+            backgroundSize: '100% 100vh',
+            backgroundRepeat: 'no-repeat',
+          }}
         />
 
         {/* Slide indicator dots + Läs mer button */}
         <div className="absolute bottom-20 right-6 flex items-center gap-4">
-          <Link to={['/el', '/vvs', '/bygg'][heroSlide]}>
+          <Link to={['/bygg', '/vvs', '/el'][heroSlide]}>
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.97 }}
@@ -1000,10 +1012,17 @@ export default function LandingPage() {
       </section>
 
       {/* ── "How it works" — sticky-pin / translated-stack zig-zag ── */}
-      {/* Heading sits above the pinned scene (in normal flow) */}
+      {/* Heading sits above the pinned scene (in normal flow). Background
+          matches the driver below so the two read as one continuous section. */}
       <section
         className="relative pt-4 sm:pt-6"
-        style={{ backgroundColor: '#F8F6F3' }}
+        style={{
+          background:
+            'linear-gradient(to bottom, #b8b3aa 0%, #b8b3aa 15%, #faf8f4 50%, #b8b3aa 85%, #b8b3aa 100%)',
+          backgroundAttachment: 'fixed',
+          backgroundSize: '100% 100vh',
+          backgroundRepeat: 'no-repeat',
+        }}
       >
         <div
           className="pointer-events-none absolute inset-0"
@@ -1035,7 +1054,16 @@ export default function LandingPage() {
       <div
         ref={driverRef}
         className="relative"
-        style={{ backgroundColor: '#F8F6F3' }}
+        style={{
+          // Single light-stone-gray wave (full → light → full) locked to the
+          // viewport so the gradient stays static while the sticky boxes
+          // scroll past it.
+          background:
+            'linear-gradient(to bottom, #b8b3aa 0%, #b8b3aa 15%, #faf8f4 50%, #b8b3aa 85%, #b8b3aa 100%)',
+          backgroundAttachment: 'fixed',
+          backgroundSize: '100% 100vh',
+          backgroundRepeat: 'no-repeat',
+        }}
       >
         <div
           className="pointer-events-none absolute inset-0"
