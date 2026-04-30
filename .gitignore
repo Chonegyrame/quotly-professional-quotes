@@ -37,3 +37,6 @@ _design_handoff/
 /scroll-line-demo-fixed.html
 /scroll-line-demo.html
 /zaptec-UHNdOFqNhNQ-unsplash.jpg
+
+# Supabase CLI cache (gets touched on every `supabase functions deploy`)
+supabase/.temp/
