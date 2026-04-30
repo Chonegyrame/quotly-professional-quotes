@@ -76,25 +76,52 @@ serve(async (req: Request) => {
     );
   }
 
-  // Insert the membership. UNIQUE (company_id, user_id) guards against
-  // double-accept races.
-  const { error: insertErr } = await adminClient
+  // One firm per user (enforced by UNIQUE (user_id) on company_memberships).
+  // Look up any existing membership before inserting so we can give a clear
+  // Swedish error if the invitee is already in a different firm — otherwise
+  // the constraint violation just bubbles up as a generic 23505.
+  const { data: existing } = await adminClient
     .from("company_memberships")
-    .insert({
-      company_id: invite.company_id,
-      user_id: userId,
-      role: invite.role,
-      invited_by: null,
-    });
+    .select("company_id")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (insertErr) {
-    // 23505 = unique_violation. Safe to treat as "already joined".
-    const code = (insertErr as { code?: string }).code;
-    if (code !== "23505") {
-      console.error(`[${FUNCTION_NAME}] insert-error: ${insertErr.message}`);
-      return jsonResponse({ error: "Kunde inte skapa medlemskap" }, 500);
+  if (existing && existing.company_id !== invite.company_id) {
+    return jsonResponse(
+      {
+        error:
+          "Det här kontot är redan kopplat till en annan firma. " +
+          "Logga ut och skapa ett nytt konto för att gå med i en annan firma.",
+      },
+      409,
+    );
+  }
+
+  if (!existing) {
+    // First-time accept. Insert the membership. The remaining UNIQUE
+    // constraints (company_id+user_id and user_id) still defend against
+    // races even with this pre-check.
+    const { error: insertErr } = await adminClient
+      .from("company_memberships")
+      .insert({
+        company_id: invite.company_id,
+        user_id: userId,
+        role: invite.role,
+        invited_by: null,
+      });
+
+    if (insertErr) {
+      // 23505 = unique_violation. Treat as "already joined the same firm";
+      // for the user_id-only collision the pre-check above already returned
+      // 409, so any 23505 here means a concurrent accept of THIS invite.
+      const code = (insertErr as { code?: string }).code;
+      if (code !== "23505") {
+        console.error(`[${FUNCTION_NAME}] insert-error: ${insertErr.message}`);
+        return jsonResponse({ error: "Kunde inte skapa medlemskap" }, 500);
+      }
     }
   }
+  // Re-accepting an invite for the same firm = idempotent no-op.
 
   // Mark the invite accepted. Best-effort; membership is the source of truth.
   await adminClient
