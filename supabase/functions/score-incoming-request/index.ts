@@ -10,10 +10,11 @@ const IP_LIMIT_PER_HOUR = 30;
 const GLOBAL_CEILING_24H = 500;
 
 // ============================================================
-// Scoring engine: reads an incoming_requests row, scores it via
-// Claude Sonnet with forced tool-use (score_lead), post-processes
-// for evidence/arithmetic/tier consistency, and writes results
-// back to the row.
+// Scoring engine: reads an incoming_requests row, has Claude Sonnet
+// produce three sub-scores via forced tool-use (score_lead), then
+// computes the final score + tier deterministically from those
+// sub-scores. Strips unverifiable red flags and caps tier when
+// confidence is låg.
 //
 // Trigger: invoked synchronously from submit-intake-request right
 // after insert. Phase 4 (Inbox UI) reads the resulting ai_verdict.
@@ -108,19 +109,6 @@ const SCORE_LEAD_TOOL = {
         description:
           "Hur väl förfrågan är ifylld: beskrivning, bilder, alla fält besvarade, ingen 'vet ej'.",
       },
-      score: {
-        type: "integer",
-        minimum: 0,
-        maximum: 100,
-        description:
-          "Övergripande poäng, viktat: 0.45 * fit + 0.35 * intent + 0.20 * clarity. Avrunda till heltal.",
-      },
-      tier: {
-        type: "string",
-        enum: ["Mycket stark", "Stark", "Mellan", "Svag"],
-        description:
-          "Tier baserat på score: 85-100=Mycket stark, 70-84=Stark, 50-69=Mellan, 0-49=Svag.",
-      },
       summary: {
         type: "string",
         maxLength: 160,
@@ -191,8 +179,6 @@ const SCORE_LEAD_TOOL = {
       "fit_score",
       "intent_score",
       "clarity_score",
-      "score",
-      "tier",
       "summary",
       "green_flags",
       "red_flags",
@@ -208,11 +194,12 @@ const STATIC_SYSTEM_PROMPT = `
 Du är en scoringmotor som bedömer inkommande kundförfrågningar åt svenska hantverksfirmor.
 
 DIN UPPGIFT
-Produce en strukturerad bedömning via verktyget score_lead. Fältet "reasoning" kommer FÖRST i schemat — tänk där, sedan ge siffrorna. Bedömningen ska:
+Produce en strukturerad bedömning via verktyget score_lead. Fältet "reasoning" kommer FÖRST i schemat — tänk där, sedan ge sub-poängen. Bedömningen ska:
 1. Vara kalibrerad mot rubriken nedan.
 2. Ha evidence för VARJE röd flagga (ordagrant citat ur kundens förfrågan).
-3. Matcha tier mot score enligt gränser.
-4. Sänka confidence till "låg" vid gles eller tvetydig information.
+3. Sänka confidence till "låg" vid gles eller tvetydig information.
+
+OBS: Du ska INTE producera någon övergripande "score" eller "tier" — systemet beräknar dessa automatiskt från dina tre sub-poäng (fit, intent, clarity). Fokusera på att kalibrera sub-poängen rätt.
 
 RUBRIKEN (0–100 per sub-score, avrunda till heltal)
 
@@ -237,21 +224,8 @@ clarity_score — hur väl förfrågan är ifylld
 - 30–49: flera tomma/vaga fält
 - 0–29: nästan ingen information, bara fritextsvepning
 
-TIER (utifrån score)
-- Mycket stark: 85–100
-- Stark: 70–84
-- Mellan: 50–69
-- Svag: 0–49
-
-SAMMANRÄKNING
-score = round(0.45 * fit_score + 0.35 * intent_score + 0.20 * clarity_score)
-
-BILD-SIGNAL
-Photo_count (antal bifogade bilder) påverkar clarity_score positivt:
-- 0 bilder: ingen bonus
-- 1–2 bilder: +5 till clarity om de är relevanta för uppdraget
-- 3+ bilder: +10 till clarity
-Observera att vissa mallar kräver bild — då är det förväntat, inte bonus.
+BILDER
+Bifogade bilder är ett positivt signalvärde för clarity, men en utförlig text utan bilder kan vara lika stark. Tomma eller obesvarade fält är negativt oavsett om bilder bifogats. Räkna inte bilder mekaniskt — väg in dem som en av flera signaler i clarity_score.
 
 EVIDENCE-REGELN (kritisk)
 Varje röd flagga MÅSTE ha "evidence" som är ett ORDAGRANT citat ur kundens förfrågan. Inga parafraser, ingen tolkning. Om du inte kan hitta ett citat — nämn inte flaggan. Det är bättre att missa en flagga än att hitta på en.
@@ -268,8 +242,8 @@ Sätt "låg" om:
 Sätt "hög" när förfrågan är utförlig, bifogade bilder matchar uppdraget, och alla obligatoriska fält är konkreta.
 
 NEXT_STEP
-- skapa_offert: tier = Mycket stark, Stark eller Mellan OCH confidence != låg
-- artigt_avböj: tier = Svag ELLER score < 30 ELLER jobbet ligger helt utanför firmans bransch/område
+- artigt_avböj: fit_score < 30 ELLER jobbet ligger helt utanför firmans bransch/område ELLER (intent_score < 30 OCH clarity_score < 30).
+- skapa_offert: i alla andra fall där confidence inte är "låg".
 - Vid artigt_avböj, skriv en kort suggested_message (2–3 meningar) på svenska som firman kan klistra in och skicka.
 `.trim();
 
@@ -378,14 +352,12 @@ function buildFirmBlock(
 
 // Post-processing --------------------------------------------------
 
-type Verdict = {
+type ClaudeOutput = {
   reasoning: string;
   parsed_fields: Record<string, unknown> & { photo_count?: number };
   fit_score: number;
   intent_score: number;
   clarity_score: number;
-  score: number;
-  tier: Tier;
   summary: string;
   green_flags: Array<{ label: string; evidence: string }>;
   red_flags: Array<{ label: string; evidence: string; severity: string }>;
@@ -393,6 +365,15 @@ type Verdict = {
   confidence: "hög" | "medel" | "låg";
   needs_human_review: boolean;
 };
+
+type Verdict = ClaudeOutput & { score: number; tier: Tier };
+
+function computeFinalScore(o: ClaudeOutput): { score: number; tier: Tier } {
+  const score = Math.round(
+    0.45 * o.fit_score + 0.35 * o.intent_score + 0.20 * o.clarity_score,
+  );
+  return { score, tier: tierForScore(score) };
+}
 
 function normalizeForMatch(s: string): string {
   return s
@@ -402,10 +383,10 @@ function normalizeForMatch(s: string): string {
     .trim();
 }
 
-function stripUnverifiableRedFlags(
-  verdict: Verdict,
+function stripUnverifiableRedFlags<T extends { red_flags: ClaudeOutput["red_flags"] }>(
+  verdict: T,
   submissionText: string,
-): { verdict: Verdict; removed: number } {
+): { verdict: T; removed: number } {
   const haystack = normalizeForMatch(submissionText);
   let removed = 0;
   const kept = verdict.red_flags.filter((f) => {
@@ -426,32 +407,16 @@ function stripUnverifiableRedFlags(
   return { verdict: { ...verdict, red_flags: kept }, removed };
 }
 
-function enforceArithmetic(verdict: Verdict): { verdict: Verdict; adjusted: boolean } {
-  const expected = Math.round(
-    0.45 * verdict.fit_score +
-      0.35 * verdict.intent_score +
-      0.20 * verdict.clarity_score,
-  );
-  const diff = Math.abs(expected - verdict.score);
-  if (diff <= 5) return { verdict, adjusted: false };
-  return { verdict: { ...verdict, score: expected }, adjusted: true };
-}
-
-function enforceTierConsistency(
-  verdict: Verdict,
-): { verdict: Verdict; adjusted: boolean } {
-  const expected = tierForScore(verdict.score);
-  if (expected === verdict.tier) return { verdict, adjusted: false };
-  return { verdict: { ...verdict, tier: expected }, adjusted: true };
-}
-
 function applyConfidenceCap(
   verdict: Verdict,
 ): { verdict: Verdict; adjusted: boolean } {
   if (verdict.confidence !== "låg") return { verdict, adjusted: false };
   if (verdict.tier === "Mycket stark" || verdict.tier === "Stark") {
+    // Demote to Mellan and recompute score to the top of that band so the
+    // displayed score matches the tier.
+    const cappedScore = Math.min(verdict.score, TIER_THRESHOLDS.Stark - 1);
     return {
-      verdict: { ...verdict, tier: "Mellan" as Tier },
+      verdict: { ...verdict, tier: "Mellan" as Tier, score: cappedScore },
       adjusted: true,
     };
   }
@@ -464,7 +429,7 @@ async function callClaude(
   apiKey: string,
   firmBlock: string,
   submissionBlock: string,
-): Promise<Verdict | null> {
+): Promise<ClaudeOutput | null> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -515,7 +480,7 @@ async function callClaude(
       console.error(`[${FUNCTION_NAME}] no-tool-use`);
       return null;
     }
-    return toolUse.input as Verdict;
+    return toolUse.input as ClaudeOutput;
   } catch (e) {
     console.error(`[${FUNCTION_NAME}] parse-error: ${(e as Error).message}`);
     return null;
@@ -659,8 +624,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // Call Claude
-  let verdict = await callClaude(anthropicApiKey, firmBlock, submissionBlock);
-  if (!verdict) {
+  const claudeOutput = await callClaude(anthropicApiKey, firmBlock, submissionBlock);
+  if (!claudeOutput) {
     await adminClient.from("ai_ip_usage").insert({
       ip,
       function_name: FUNCTION_NAME,
@@ -669,27 +634,24 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Post-processing ---
-  let adjustedAny = false;
+  // 1. Strip red flags whose evidence isn't actually in the submission.
+  const { verdict: stripped, removed } = stripUnverifiableRedFlags(
+    claudeOutput,
+    submissionText,
+  );
 
-  const { verdict: v1, removed } = stripUnverifiableRedFlags(verdict, submissionText);
-  if (removed > 0) adjustedAny = true;
-  verdict = v1;
+  // 2. Compute final score + tier deterministically from sub-scores.
+  const { score, tier } = computeFinalScore(stripped);
+  let verdict: Verdict = { ...stripped, score, tier };
 
-  const arith = enforceArithmetic(verdict);
-  if (arith.adjusted) adjustedAny = true;
-  verdict = arith.verdict;
-
-  const tierCons = enforceTierConsistency(verdict);
-  if (tierCons.adjusted) adjustedAny = true;
-  verdict = tierCons.verdict;
-
+  // 3. Cap tier when confidence is låg.
   const confCap = applyConfidenceCap(verdict);
-  if (confCap.adjusted) adjustedAny = true;
   verdict = confCap.verdict;
 
-  // needs_human_review: respect the model's own flag + auto-raise if any
-  // guardrail triggered corrections.
-  const needsReview = verdict.needs_human_review || adjustedAny;
+  // needs_human_review: respect the model's own flag + raise if we stripped
+  // red flags or the confidence cap demoted the tier.
+  const needsReview =
+    verdict.needs_human_review || removed > 0 || confCap.adjusted;
 
   // Persist
   const { error: updateErr } = await adminClient
@@ -718,7 +680,7 @@ Deno.serve(async (req: Request) => {
       score: verdict.score,
       tier: verdict.tier,
       confidence: verdict.confidence,
-      adjusted: adjustedAny,
+      adjusted: needsReview,
     },
     200,
   );
