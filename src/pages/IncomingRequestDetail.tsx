@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { ArrowLeft, Sparkles, ChevronDown, ChevronUp, Image, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, ChevronDown, ChevronUp, Image, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScoreRing } from '@/components/ScoreRing';
 import { FlagsList } from '@/components/FlagsList';
+import { DeclineRequestDialog } from '@/components/DeclineRequestDialog';
 import { useIncomingRequest, useIncomingRequests, useGenerateQuoteFromRequest } from '@/hooks/useIncomingRequests';
 
 const tierBadgeClass: Record<string, string> = {
@@ -26,6 +27,7 @@ export default function IncomingRequestDetail() {
   const { generate, generatingId } = useGenerateQuoteFromRequest();
   const isGenerating = generatingId === id;
   const [showReasoning, setShowReasoning] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
 
   useEffect(() => {
     if (request?.status === 'new') {
@@ -126,33 +128,55 @@ export default function IncomingRequestDetail() {
           )}
 
           {/* Actions */}
-          <div className="mt-4 flex items-center gap-3">
-            {request.status !== 'converted' ? (
-              <Button
-                onClick={() => generate(request)}
-                disabled={isGenerating}
-                className="gap-1.5"
-              >
-                {isGenerating ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" />Analyserar...</>
-                ) : (
-                  <><Sparkles className="h-4 w-4" />Generera offert</>
-                )}
-              </Button>
-            ) : (
+          <div className="mt-4 flex items-center gap-3 flex-wrap">
+            {request.status === 'converted' ? (
               <Badge variant="outline">Offert skapad</Badge>
+            ) : request.status === 'declined' ? (
+              <Badge variant="outline">Avböjd</Badge>
+            ) : (
+              <>
+                <Button
+                  onClick={() => generate(request)}
+                  disabled={isGenerating}
+                  className="gap-1.5"
+                >
+                  {isGenerating ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" />Analyserar...</>
+                  ) : (
+                    <><Sparkles className="h-4 w-4" />Generera offert</>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={!request.submitter_email}
+                  title={!request.submitter_email ? 'Kunden har inte angett e-post' : undefined}
+                  className="gap-1.5"
+                >
+                  <X className="h-4 w-4" />
+                  Avböj kund
+                </Button>
+              </>
             )}
-            {request.status !== 'converted' && request.status !== 'dismissed' && (
-              <button
-                className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                onClick={handleDismiss}
-              >
-                Markera som hanterad
-              </button>
-            )}
+            {request.status !== 'converted' &&
+              request.status !== 'dismissed' &&
+              request.status !== 'declined' && (
+                <button
+                  className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                  onClick={handleDismiss}
+                >
+                  Markera som hanterad
+                </button>
+              )}
           </div>
         </CardContent>
       </Card>
+
+      <DeclineRequestDialog
+        open={declineOpen}
+        onClose={() => setDeclineOpen(false)}
+        request={request}
+      />
 
       {/* Flags */}
       {(verdict?.green_flags?.length || verdict?.red_flags?.length) ? (

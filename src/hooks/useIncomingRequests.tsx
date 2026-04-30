@@ -51,7 +51,7 @@ export type IncomingRequest = {
   ai_confidence: 'hög' | 'medel' | 'låg' | null;
   ai_verdict: AiVerdict | null;
   needs_human_review: boolean;
-  status: 'new' | 'viewed' | 'converted' | 'dismissed';
+  status: 'new' | 'viewed' | 'converted' | 'declined' | 'dismissed';
   converted_to_quote_id: string | null;
   internal_notes: string | null;
   created_at: string;
@@ -111,12 +111,35 @@ export function useIncomingRequests() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['incoming_requests'] }),
   });
 
+  const declineRequest = useMutation({
+    mutationFn: async ({
+      requestId,
+      recipient,
+      message,
+    }: {
+      requestId: string;
+      recipient: string;
+      message: string;
+    }) => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      const { error } = await supabase.functions.invoke('send-lead-decline', {
+        body: { requestId, recipient, message },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['incoming_requests'] }),
+  });
+
   return {
     requests: query.data ?? [],
     isLoading: query.isLoading,
     markViewed,
     dismissRequest,
     convertRequest,
+    declineRequest,
   };
 }
 

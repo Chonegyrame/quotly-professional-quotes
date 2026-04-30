@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Flame, TrendingUp, Minus, TrendingDown, Clock, Layers } from 'lucide-react';
+import { Flame, TrendingUp, Minus, TrendingDown, Clock, Layers, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { useIncomingRequests } from '@/hooks/useIncomingRequests';
 import { IncomingRequestCard } from '@/components/IncomingRequestCard';
 
-type Filter = 'alla' | 'Mycket stark' | 'Stark' | 'Mellan' | 'Svag' | 'obesvarade';
+type Filter = 'alla' | 'Mycket stark' | 'Stark' | 'Mellan' | 'Svag' | 'obesvarade' | 'avbojda';
 
 const filterCards: { id: Filter; label: string; icon: React.ElementType }[] = [
   { id: 'alla', label: 'Alla', icon: Layers },
@@ -14,25 +14,32 @@ const filterCards: { id: Filter; label: string; icon: React.ElementType }[] = [
   { id: 'Mellan', label: 'Mellan', icon: Minus },
   { id: 'Svag', label: 'Svag', icon: TrendingDown },
   { id: 'obesvarade', label: 'Obesvarade', icon: Clock },
+  { id: 'avbojda', label: 'Avböjda', icon: X },
 ];
 
 export default function Inbox() {
   const { requests, isLoading, dismissRequest } = useIncomingRequests();
   const [activeFilter, setActiveFilter] = useState<Filter>('alla');
 
+  // The tier counts and the default "alla" view exclude both dismissed and declined leads —
+  // those are reachable via the explicit "Avböjda" filter (and dismissed are intentionally hidden).
+  const isActive = (status: string) => status !== 'dismissed' && status !== 'declined';
+
   const counts: Record<Filter, number> = {
-    alla: requests.filter((r) => r.status !== 'dismissed').length,
+    alla: requests.filter((r) => isActive(r.status)).length,
     'Mycket stark': requests.filter(
-      (r) => r.ai_tier === 'Mycket stark' && r.status !== 'dismissed',
+      (r) => r.ai_tier === 'Mycket stark' && isActive(r.status),
     ).length,
-    Stark: requests.filter((r) => r.ai_tier === 'Stark' && r.status !== 'dismissed').length,
-    Mellan: requests.filter((r) => r.ai_tier === 'Mellan' && r.status !== 'dismissed').length,
-    Svag: requests.filter((r) => r.ai_tier === 'Svag' && r.status !== 'dismissed').length,
+    Stark: requests.filter((r) => r.ai_tier === 'Stark' && isActive(r.status)).length,
+    Mellan: requests.filter((r) => r.ai_tier === 'Mellan' && isActive(r.status)).length,
+    Svag: requests.filter((r) => r.ai_tier === 'Svag' && isActive(r.status)).length,
     obesvarade: requests.filter((r) => r.status === 'new').length,
+    avbojda: requests.filter((r) => r.status === 'declined').length,
   };
 
   const filtered = requests.filter((r) => {
-    if (r.status === 'dismissed') return false;
+    if (activeFilter === 'avbojda') return r.status === 'declined';
+    if (r.status === 'dismissed' || r.status === 'declined') return false;
     if (activeFilter === 'alla') return true;
     if (activeFilter === 'obesvarade') return r.status === 'new';
     return r.ai_tier === activeFilter;
@@ -53,7 +60,7 @@ export default function Inbox() {
       </div>
 
       {/* Filter cards — mirrors Dashboard stat grid */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-6">
         {filterCards.map((f) => {
           const Icon = f.icon;
           const isActive = activeFilter === f.id;

@@ -66,11 +66,15 @@ export default function Settings() {
   const [emailTemplate, setEmailTemplate] = useState(
     'Hej {customer_name},\n\nHär är din offert via länken nedan.\n\nVänliga hälsningar,\n{company_name}'
   );
+  const [declineTemplate, setDeclineTemplate] = useState(
+    'Hej {customer_name},\n\nTack för din förfrågan. Tyvärr har vi inte möjlighet att ta oss an detta uppdrag.\n\nVänliga hälsningar,\n{company_name}'
+  );
   const [logoUrl, setLogoUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // Top-level view: 'settings' (current cards) or 'formular' (forms manager).
-  const [view, setView] = useState<'settings' | 'formular'>('settings');
+  // Top-level view: 'settings' (current cards), 'formular' (forms manager),
+  // or 'business-profile' (lead-routing config).
+  const [view, setView] = useState<'settings' | 'formular' | 'business-profile'>('settings');
   // When inside the formular view, which trade is drilled into (null = landing).
   const [selectedTrade, setSelectedTrade] = useState<FormTrade | null>(null);
 
@@ -89,7 +93,7 @@ export default function Settings() {
     setPreviewOpen(true);
   }
 
-  function handleSwitchView(next: 'settings' | 'formular') {
+  function handleSwitchView(next: 'settings' | 'formular' | 'business-profile') {
     setView(next);
     if (next !== 'formular') setSelectedTrade(null);
   }
@@ -157,6 +161,7 @@ export default function Settings() {
       setDefaultValidityDays(company.default_validity_days);
       setLogoUrl(company.logo_url || '');
       setEmailTemplate(company.email_template || 'Hej {customer_name},\n\nHär är din offert via länken nedan.\n\nVänliga hälsningar,\n{company_name}');
+      setDeclineTemplate(company.decline_template || 'Hej {customer_name},\n\nTack för din förfrågan. Tyvärr har vi inte möjlighet att ta oss an detta uppdrag.\n\nVänliga hälsningar,\n{company_name}');
     }
   }, [company]);
 
@@ -241,6 +246,7 @@ export default function Settings() {
         default_vat: defaultVat,
         default_validity_days: defaultValidityDays,
         email_template: emailTemplate,
+        decline_template: declineTemplate,
       });
       toast.success('Inställningar sparade');
     } catch (err: any) {
@@ -249,14 +255,17 @@ export default function Settings() {
   };
 
   // Page header logic:
-  //   - settings view → arrow goes to dashboard, heading "Inställningar", toggle shows "Formulär"
-  //   - formular view + no trade selected → arrow goes back to settings view, heading "Formulär", toggle shows "Inställningar"
+  //   - settings view → arrow goes to dashboard, heading "Inställningar", header shows Företagsprofil + Formulär buttons
+  //   - formular view + no trade selected → arrow goes back to settings, heading "Formulär", header shows "+ Skapa formulär"
   //   - formular view + trade selected → no page header at all; the trade view supplies its own
+  //   - business-profile view → arrow goes back to settings, heading "Företagsprofil", no extra buttons
   const showPageHeader = !(view === 'formular' && selectedTrade);
   const handleHeaderBack = () => {
-    if (view === 'formular') handleSwitchView('settings');
+    if (view === 'formular' || view === 'business-profile') handleSwitchView('settings');
     else navigate('/');
   };
+  const headingText =
+    view === 'formular' ? 'Formulär' : view === 'business-profile' ? 'Företagsprofil' : 'Inställningar';
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto animate-fade-in">
@@ -266,10 +275,17 @@ export default function Settings() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-xl font-heading font-bold">
-            {view === 'formular' ? 'Formulär' : 'Inställningar'}
+            {headingText}
           </h1>
           {view === 'settings' && (
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSwitchView('business-profile')}
+              >
+                Företagsprofil
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -311,6 +327,8 @@ export default function Settings() {
             onPreview={openPreview}
           />
         )
+      ) : view === 'business-profile' ? (
+        <BusinessProfileSection />
       ) : (
       <div className="space-y-4">
 
@@ -417,11 +435,24 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Standardmeddelande vid avböjande</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Förifylls i avböj-modalen när du svarar nej till en förfrågan. Du kan alltid redigera meddelandet innan du skickar.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Textarea value={declineTemplate} onChange={(e) => setDeclineTemplate(e.target.value)} rows={5} className="font-mono text-sm" />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Variabler: {'{customer_name}'}, {'{company_name}'}
+            </p>
+          </CardContent>
+        </Card>
+
         <Button className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90" onClick={handleSave} disabled={updateCompany.isPending}>
           <Save className="h-4 w-4" /> Spara inställningar
         </Button>
-
-        <BusinessProfileSection />
 
         <TeamSection />
       </div>

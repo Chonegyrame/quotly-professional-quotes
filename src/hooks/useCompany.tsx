@@ -17,6 +17,7 @@ export interface Company {
   default_vat: number;
   default_validity_days: number;
   email_template: string | null;
+  decline_template: string | null;
   form_slug: string | null;
 }
 
