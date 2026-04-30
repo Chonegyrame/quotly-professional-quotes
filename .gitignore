@@ -29,3 +29,11 @@ dist-ssr
 *.sln
 *.sw?
 .claude/plans/
+
+# Local design sketches and reference assets — kept on disk, not in git.
+_design_handoff/
+*.zip
+/Lead Cards Scroll Animation.html
+/scroll-line-demo-fixed.html
+/scroll-line-demo.html
+/zaptec-UHNdOFqNhNQ-unsplash.jpg
