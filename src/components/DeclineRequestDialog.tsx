@@ -46,9 +46,14 @@ export function DeclineRequestDialog({ open, onClose, request }: Props) {
 
   const recipient = request.submitter_email?.trim() ?? '';
   const canSend = !!recipient && message.trim().length > 0 && !declineRequest.isPending;
+  // Guard so a fast double-click on Skicka avböjande doesn't fire the
+  // edge function (and the email) twice.
+  const sendingRef = useRef(false);
 
   function handleSend() {
     if (!canSend) return;
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     declineRequest.mutate(
       { requestId: request.id, recipient, message: message.trim() },
       {
@@ -58,6 +63,9 @@ export function DeclineRequestDialog({ open, onClose, request }: Props) {
         },
         onError: (err: any) => {
           toast.error(err?.message || 'Kunde inte skicka avböjande');
+        },
+        onSettled: () => {
+          sendingRef.current = false;
         },
       },
     );

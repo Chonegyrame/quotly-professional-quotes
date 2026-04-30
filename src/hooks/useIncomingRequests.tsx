@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -153,9 +153,15 @@ export function useGenerateQuoteFromRequest() {
   const { profile } = useCompanyBusinessProfile();
   const navigate = useNavigate();
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  // Synchronous re-entrancy guard. The button has `disabled={isGenerating}`
+  // for cosmetics but React state updates are async — between click and
+  // re-render, a fast double-click would fire generate-quote twice.
+  const generatingRef = useRef(false);
 
   async function generate(request: IncomingRequest) {
     if (!company) return;
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setGeneratingId(request.id);
     try {
       const parts: string[] = [];
@@ -224,6 +230,7 @@ export function useGenerateQuoteFromRequest() {
       toast.error(err.message || 'Något gick fel, försök igen');
     } finally {
       setGeneratingId(null);
+      generatingRef.current = false;
     }
   }
 

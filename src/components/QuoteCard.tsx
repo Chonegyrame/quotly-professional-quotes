@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, MoreHorizontal, Copy, Send, Archive, RotateCcw, Trash2, BookTemplate } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -78,13 +78,20 @@ export function QuoteCard({ quote, isArchived = false, onSendReminder }: Props) 
     }
   };
 
+  // Guard so a fast double-click on Duplicera doesn't create two duplicates
+  // (mutation.isPending is async-flipped via re-render).
+  const duplicatingRef = useRef(false);
   const handleDuplicate = async () => {
+    if (duplicatingRef.current) return;
+    duplicatingRef.current = true;
     try {
       const newQuote = await duplicateQuote.mutateAsync({ quoteId: quote.id });
       toast.success('Offert duplicerad');
       navigate(`/quotes/${newQuote.id}/edit`);
     } catch (err: any) {
       toast.error(err.message || 'Kunde inte duplicera');
+    } finally {
+      duplicatingRef.current = false;
     }
   };
 

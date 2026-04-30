@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -167,13 +167,19 @@ export default function QuoteDetail() {
     }
   };
 
+  // Guard against double-click creating two duplicates.
+  const duplicatingRef = useRef(false);
   const handleDuplicate = async () => {
+    if (duplicatingRef.current) return;
+    duplicatingRef.current = true;
     try {
       const duplicatedQuote = await duplicateQuote.mutateAsync({ quoteId: quote.id });
       toast.success('Offert kopierad');
       navigate(`/quotes/${duplicatedQuote.id}/edit`);
     } catch (err: any) {
       toast.error(err.message || 'Kunde inte kopiera offerten');
+    } finally {
+      duplicatingRef.current = false;
     }
   };
 

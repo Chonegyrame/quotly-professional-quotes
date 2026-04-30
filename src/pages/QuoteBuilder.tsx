@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -244,11 +244,19 @@ export default function QuoteBuilder() {
     (i) => i.description.trim() && (i.laborPrice > 0 || i.materials.some((m) => m.unitPrice > 0))
   );
 
+  // Synchronous re-entrancy guard. The button has `disabled={isPending}`,
+  // but React only flips that prop after re-rendering — a fast double-click
+  // can fire two onClicks before the first re-render lands, both reaching
+  // createQuote.mutateAsync and inserting two real rows. The ref check is
+  // synchronous so the second call short-circuits immediately.
+  const savingRef = useRef(false);
+
   const handleSave = async (status: 'draft' | 'sent') => {
     const effectiveStatus = status === 'sent' ? 'draft' : status;
 
     // Validation: block save if any named material has inköp filled but kundpris empty.
     // This catches the "user filled cost but forgot customer price" mistake.
+    // Validation runs BEFORE the guard so failed validation doesn't lock the button.
     const incompletePricedMaterial = items
       .flatMap((i) => i.materials)
       .find((m) => m.name.trim() && m.purchasePrice > 0 && (!m.unitPrice || m.unitPrice === 0));
@@ -256,6 +264,10 @@ export default function QuoteBuilder() {
       toast.error(`Pris ej angett för "${incompletePricedMaterial.name}"`);
       return;
     }
+
+    // Claim the save slot. The finally block always releases it.
+    if (savingRef.current) return;
+    savingRef.current = true;
 
     try {
       const quoteItems = items
@@ -437,6 +449,8 @@ export default function QuoteBuilder() {
       }
     } catch (err: any) {
       toast.error(err.message || 'Kunde inte spara offert');
+    } finally {
+      savingRef.current = false;
     }
   };
 
