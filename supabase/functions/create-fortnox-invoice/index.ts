@@ -21,6 +21,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   authenticate,
+  checkIpRateLimit,
   corsHeaders,
   jsonResponse,
 } from "../_shared/auth.ts";
@@ -30,6 +31,10 @@ import {
 } from "../_shared/fortnox.ts";
 
 const FUNCTION_NAME = "create-fortnox-invoice";
+// 60/hour per IP. Each call writes both a customer and an invoice into
+// the firm's Fortnox, so we want a low ceiling against accidental loops
+// or malicious spam.
+const IP_LIMIT_PER_HOUR = 60;
 
 type Payload = { quoteId: string };
 
@@ -64,7 +69,16 @@ serve(async (req: Request) => {
 
     const auth = await authenticate(req, FUNCTION_NAME);
     if (!auth.ok) return auth.response;
-    const { authClient, adminClient, userId } = auth;
+    const { authClient, adminClient, userId, ip } = auth;
+
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
+    );
+    if (ipResp) return ipResp;
 
     const { quoteId }: Payload = await req.json();
     if (typeof quoteId !== "string" || !quoteId.trim()) {

@@ -31,9 +31,11 @@ type TokenResponse = {
 function basicAuthHeader(): string {
   const id = Deno.env.get("FORTNOX_CLIENT_ID") ?? "";
   const secret = Deno.env.get("FORTNOX_CLIENT_SECRET") ?? "";
-  // deno-lint-ignore no-explicit-any
-  const encoder: any = btoa ?? ((s: string) => Buffer.from(s).toString("base64"));
-  return `Basic ${encoder(`${id}:${secret}`)}`;
+  // Deno provides `btoa` as a global Web API. The previous Buffer fallback
+  // was dead code (Buffer isn't defined in Deno without a node:buffer
+  // import) that would only have surfaced if `btoa` ever disappeared, in
+  // which case it would have thrown ReferenceError instead of helping.
+  return `Basic ${btoa(`${id}:${secret}`)}`;
 }
 
 // Exchange an OAuth authorization code for an access + refresh token pair.

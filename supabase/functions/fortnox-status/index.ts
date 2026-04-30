@@ -7,11 +7,15 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   authenticate,
+  checkIpRateLimit,
   corsHeaders,
   jsonResponse,
 } from "../_shared/auth.ts";
 
 const FUNCTION_NAME = "fortnox-status";
+// 120/hour per IP. This endpoint is polled on Settings mount, so the
+// limit is generous; it just prevents runaway clients from hammering it.
+const IP_LIMIT_PER_HOUR = 120;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -21,7 +25,16 @@ serve(async (req: Request) => {
   try {
     const auth = await authenticate(req, FUNCTION_NAME);
     if (!auth.ok) return auth.response;
-    const { authClient, adminClient, userId } = auth;
+    const { authClient, adminClient, userId, ip } = auth;
+
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
+    );
+    if (ipResp) return ipResp;
 
     // Look up the caller's company via the auth-scoped client so RLS
     // enforces that they actually belong to it.

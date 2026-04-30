@@ -10,12 +10,26 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   authenticate,
+  checkIpRateLimit,
   corsHeaders,
   jsonResponse,
 } from "../_shared/auth.ts";
 import { exchangeCodeForTokens, upsertConnection } from "../_shared/fortnox.ts";
 
 const FUNCTION_NAME = "fortnox-oauth-callback";
+// 30/hour per IP. This is a token-minting endpoint and a hot CSRF/XSRF
+// target if a client_secret ever leaks; cap brute attempts.
+const IP_LIMIT_PER_HOUR = 30;
+
+// Allow-list of redirect URIs Quotly itself will issue. Set via env so
+// adding the prod domain doesn't require a code change. Format is a
+// comma-separated list, e.g.
+//   FORTNOX_REDIRECT_URIS=http://localhost:8081/auth/fortnox/callback,https://quotly.se/auth/fortnox/callback
+function allowedRedirectUris(): string[] {
+  const raw = (Deno.env.get("FORTNOX_REDIRECT_URIS") ?? "").trim();
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 type Payload = {
   code: string;
@@ -43,12 +57,37 @@ serve(async (req: Request) => {
 
     const auth = await authenticate(req, FUNCTION_NAME);
     if (!auth.ok) return auth.response;
-    const { authClient, adminClient, userId } = auth;
+    const { authClient, adminClient, userId, ip } = auth;
+
+    const ipResp = await checkIpRateLimit(
+      adminClient,
+      ip,
+      FUNCTION_NAME,
+      IP_LIMIT_PER_HOUR,
+      60,
+    );
+    if (ipResp) return ipResp;
 
     const { code, redirect_uri }: Payload = await req.json();
     if (!code?.trim() || !redirect_uri?.trim()) {
       return jsonResponse(
         { error: "Saknar code eller redirect_uri." },
+        400,
+      );
+    }
+
+    // Defense in depth: even though Fortnox itself rejects mismatched
+    // redirect_uri at code exchange (the URI is bound to the auth-step
+    // call), validate it against our own allow-list before forwarding.
+    // This means a malformed/poisoned redirect_uri bounced through the
+    // browser can't even start a Fortnox token call.
+    const allowed = allowedRedirectUris();
+    if (allowed.length > 0 && !allowed.includes(redirect_uri)) {
+      console.error(
+        `[${FUNCTION_NAME}] redirect-uri-not-allowed redirect_uri=${redirect_uri}`,
+      );
+      return jsonResponse(
+        { error: "Redirect-URI är inte tillåten." },
         400,
       );
     }

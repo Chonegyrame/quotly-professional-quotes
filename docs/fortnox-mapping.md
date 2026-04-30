@@ -26,13 +26,18 @@ Token refresh is automatic inside `getAccessToken()` whenever a fortnox-* edge f
 
 ## Required env vars
 
-| Name                       | Where      | Purpose                                              |
-| -------------------------- | ---------- | ---------------------------------------------------- |
-| `VITE_FORTNOX_CLIENT_ID`   | Browser    | Public Client ID, used to build the OAuth URL.       |
-| `FORTNOX_CLIENT_ID`        | Edge fns   | Same value, server-side, used for code exchange.     |
-| `FORTNOX_CLIENT_SECRET`    | Edge fns   | Server-only secret. Pair with `FORTNOX_CLIENT_ID`.   |
+| Name                       | Where      | Purpose                                                                                          |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| `VITE_FORTNOX_CLIENT_ID`   | Browser    | Public Client ID, used to build the OAuth URL.                                                   |
+| `FORTNOX_CLIENT_ID`        | Edge fns   | Same value, server-side, used for code exchange.                                                 |
+| `FORTNOX_CLIENT_SECRET`    | Edge fns   | Server-only secret. Pair with `FORTNOX_CLIENT_ID`.                                               |
+| `FORTNOX_REDIRECT_URIS`    | Edge fns   | Comma-separated allow-list of redirect URIs the OAuth callback will accept (defense in depth).   |
 
-Set both edge-function vars via `supabase secrets set …` so they're available to deployed functions.
+Set the edge-function vars via `supabase secrets set …` so they're available to deployed functions. Example for local + prod:
+
+```
+supabase secrets set FORTNOX_REDIRECT_URIS="http://localhost:8081/auth/fortnox/callback,https://quotly.se/auth/fortnox/callback"
+```
 
 ## Quote → Fortnox Invoice mapping
 
