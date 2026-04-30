@@ -67,28 +67,20 @@ serve(async (req: Request) => {
     const { authClient, adminClient, userId } = auth;
 
     const { quoteId }: Payload = await req.json();
-    if (!quoteId) {
+    if (typeof quoteId !== "string" || !quoteId.trim()) {
       return jsonResponse({ error: "Saknar quoteId." }, 400);
     }
 
-    // Membership lookup so we know which company the connection belongs to.
-    const { data: membership, error: membershipError } = await authClient
-      .from("company_memberships")
-      .select("company_id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
-
-    if (membershipError || !membership) {
-      return jsonResponse({ error: "Inget företag kopplat till kontot." }, 404);
-    }
-
     // Quote lookup is RLS-scoped — non-members can't sync someone else's
-    // quote even with a guessed UUID.
+    // quote even with a guessed UUID. We also fetch company_id so we can
+    // verify it matches the caller's membership before touching any
+    // external API or token row (defense in depth: even if the
+    // one-firm-per-user constraint is ever relaxed, the wrong firm's
+    // Fortnox can't be used to push another firm's quote).
     const { data: quote, error: quoteError } = await authClient
       .from("quotes")
       .select(`
-        id, status, customer_name, customer_email, customer_phone,
+        id, company_id, status, customer_name, customer_email, customer_phone,
         customer_address, valid_until, notes, trade,
         rot_eligible, rot_discount_amount, customer_rot_remaining_at_quote,
         fortnox_invoice_number, fortnox_synced_at,
@@ -104,6 +96,23 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Kunde inte hitta offerten." }, 404);
     }
 
+    // Membership scoped to the quote's company. Combined with one-firm-per-user
+    // this row is unique, but the explicit company_id eq is what guarantees
+    // we use the RIGHT firm's tokens — never a different firm's.
+    const { data: membership, error: membershipError } = await authClient
+      .from("company_memberships")
+      .select("company_id")
+      .eq("user_id", userId)
+      .eq("company_id", quote.company_id)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      return jsonResponse(
+        { error: "Du har inte behörighet till den här offerten." },
+        403,
+      );
+    }
+
     if (quote.status !== "accepted") {
       return jsonResponse(
         { error: "Endast accepterade offerter kan skickas till Fortnox." },
@@ -111,63 +120,124 @@ serve(async (req: Request) => {
       );
     }
 
-    if (quote.fortnox_invoice_number) {
+    if (quote.fortnox_invoice_number || quote.fortnox_synced_at) {
       return jsonResponse(
         {
-          error: `Offerten är redan synkad till Fortnox (#${quote.fortnox_invoice_number}).`,
+          error: quote.fortnox_invoice_number
+            ? `Offerten är redan synkad till Fortnox (#${quote.fortnox_invoice_number}).`
+            : "Offerten håller redan på att synkas. Försök igen om en stund.",
         },
         409,
       );
     }
 
-    const accessToken = await getAccessToken(adminClient, membership.company_id);
+    // ────────── Atomic claim ──────────
+    // Set fortnox_synced_at to a sentinel timestamp BEFORE any external
+    // API call. The conditional update only succeeds for one caller; a
+    // concurrent click ends up with claimed.length === 0 and is rejected.
+    // On failure later, we roll the claim back to NULL so the firm can
+    // retry. On success, we overwrite both columns with the real values.
+    const claimSentinel = new Date().toISOString();
+    const { data: claimed, error: claimError } = await adminClient
+      .from("quotes")
+      .update({ fortnox_synced_at: claimSentinel })
+      .eq("id", quoteId)
+      .is("fortnox_invoice_number", null)
+      .is("fortnox_synced_at", null)
+      .select("id");
+
+    if (claimError) {
+      console.error(`[${FUNCTION_NAME}] claim-error`, claimError);
+      return jsonResponse({ error: "Kunde inte synka offerten just nu." }, 500);
+    }
+    if (!claimed || claimed.length === 0) {
+      return jsonResponse(
+        { error: "Offerten håller redan på att synkas eller är redan synkad." },
+        409,
+      );
+    }
+
+    // From here on, every error path must roll back the claim so the firm
+    // can retry. Customer-creation that succeeds before the invoice fails
+    // also gets best-effort cleanup so we don't leave orphaned PRIVATE
+    // customers in their Fortnox catalog.
+    const rollbackClaim = async (): Promise<void> => {
+      const { error: rbError } = await adminClient
+        .from("quotes")
+        .update({ fortnox_synced_at: null })
+        .eq("id", quoteId)
+        .eq("fortnox_synced_at", claimSentinel);
+      if (rbError) {
+        console.error(`[${FUNCTION_NAME}] claim-rollback-failed`, rbError);
+      }
+    };
+
+    let accessToken: string;
+    try {
+      accessToken = await getAccessToken(adminClient, membership.company_id);
+    } catch (err) {
+      console.error(`[${FUNCTION_NAME}] token-fetch-failed`, err);
+      await rollbackClaim();
+      return jsonResponse(
+        { error: "Kunde inte hämta giltig Fortnox-anslutning. Anslut igen i Inställningar." },
+        502,
+      );
+    }
 
     // ────────── 1. Customer find-or-create ──────────
     // Fortnox customer matching: prefer email, fall back to creating a new
     // customer record. Customer numbers are Fortnox-assigned strings.
     // TODO(fortnox-spike): Verify the exact filter syntax for /3/customers.
     let customerNumber: string | null = null;
+    let customerWasCreated = false; // tracked for rollback on later failure
 
-    if (quote.customer_email) {
-      const lookupRes = await fortnoxFetch(
-        accessToken,
-        `/customers?email=${encodeURIComponent(quote.customer_email)}`,
-      );
-      const lookupJson = await lookupRes.json();
-      const candidates = lookupJson?.Customers ?? [];
-      if (candidates.length > 0) {
-        customerNumber = candidates[0]?.CustomerNumber ?? null;
-      }
-    }
-
-    if (!customerNumber) {
-      // Create a new private customer in Fortnox. Type "PRIVATE" matches
-      // homeowners who buy ROT-eligible work; firms would be "COMPANY".
-      // Quotly's customer model doesn't currently distinguish, so default
-      // to PRIVATE and let the user adjust in Fortnox if needed.
-      // TODO(fortnox-spike): expose a Type toggle on the quote when we have
-      // real users billing both private and corporate customers.
-      const createRes = await fortnoxFetch(accessToken, "/customers", {
-        method: "POST",
-        body: JSON.stringify({
-          Customer: {
-            Name: quote.customer_name,
-            Email: quote.customer_email ?? undefined,
-            Phone1: quote.customer_phone ?? undefined,
-            Address1: quote.customer_address ?? undefined,
-            CountryCode: "SE",
-            Type: "PRIVATE",
-          },
-        }),
-      });
-      const createJson = await createRes.json();
-      customerNumber = createJson?.Customer?.CustomerNumber ?? null;
-      if (!customerNumber) {
-        return jsonResponse(
-          { error: "Fortnox returnerade inget CustomerNumber vid skapande." },
-          502,
+    try {
+      if (quote.customer_email) {
+        const lookupRes = await fortnoxFetch(
+          accessToken,
+          `/customers?email=${encodeURIComponent(quote.customer_email)}`,
         );
+        const lookupJson = await lookupRes.json();
+        const candidates = lookupJson?.Customers ?? [];
+        if (candidates.length > 0) {
+          customerNumber = candidates[0]?.CustomerNumber ?? null;
+        }
       }
+
+      if (!customerNumber) {
+        // Create a new private customer in Fortnox. Type "PRIVATE" matches
+        // homeowners who buy ROT-eligible work; firms would be "COMPANY".
+        // Quotly's customer model doesn't currently distinguish, so default
+        // to PRIVATE and let the user adjust in Fortnox if needed.
+        // TODO(fortnox-spike): expose a Type toggle on the quote when we have
+        // real users billing both private and corporate customers.
+        const createRes = await fortnoxFetch(accessToken, "/customers", {
+          method: "POST",
+          body: JSON.stringify({
+            Customer: {
+              Name: quote.customer_name,
+              Email: quote.customer_email ?? undefined,
+              Phone1: quote.customer_phone ?? undefined,
+              Address1: quote.customer_address ?? undefined,
+              CountryCode: "SE",
+              Type: "PRIVATE",
+            },
+          }),
+        });
+        const createJson = await createRes.json();
+        customerNumber = createJson?.Customer?.CustomerNumber ?? null;
+        if (!customerNumber) {
+          throw new Error("Fortnox returnerade inget CustomerNumber.");
+        }
+        customerWasCreated = true;
+      }
+    } catch (err) {
+      console.error(`[${FUNCTION_NAME}] customer-step-failed`, err);
+      await rollbackClaim();
+      return jsonResponse(
+        { error: "Kunde inte synka kunden till Fortnox. Försök igen om en stund." },
+        502,
+      );
     }
 
     // ────────── 2. Build invoice rows ──────────
@@ -251,37 +321,68 @@ serve(async (req: Request) => {
       },
     };
 
-    const invoiceRes = await fortnoxFetch(accessToken, "/invoices", {
-      method: "POST",
-      body: JSON.stringify(invoicePayload),
-    });
-    const invoiceJson = await invoiceRes.json();
-    const documentNumber = invoiceJson?.Invoice?.DocumentNumber;
-
-    if (!documentNumber) {
+    let documentNumber: string | number | undefined;
+    try {
+      const invoiceRes = await fortnoxFetch(accessToken, "/invoices", {
+        method: "POST",
+        body: JSON.stringify(invoicePayload),
+      });
+      const invoiceJson = await invoiceRes.json();
+      documentNumber = invoiceJson?.Invoice?.DocumentNumber;
+      if (!documentNumber) {
+        throw new Error("Fortnox returnerade inget DocumentNumber.");
+      }
+    } catch (err) {
+      console.error(`[${FUNCTION_NAME}] invoice-post-failed`, err);
+      // Best-effort cleanup: delete the customer we just created so the firm
+      // doesn't get an orphaned PRIVATE record in their Fortnox catalog every
+      // time invoice creation fails. Pre-existing customers stay untouched.
+      if (customerWasCreated && customerNumber) {
+        try {
+          await fortnoxFetch(accessToken, `/customers/${encodeURIComponent(customerNumber)}`, {
+            method: "DELETE",
+          });
+        } catch (cleanupErr) {
+          console.error(
+            `[${FUNCTION_NAME}] customer-cleanup-failed CustomerNumber=${customerNumber}`,
+            cleanupErr,
+          );
+        }
+      }
+      await rollbackClaim();
       return jsonResponse(
-        { error: "Fortnox returnerade inget DocumentNumber." },
+        { error: "Kunde inte skapa fakturan i Fortnox. Försök igen om en stund." },
         502,
       );
     }
 
     // ────────── 4. Persist sync state on the quote ──────────
-    const { error: updateError } = await adminClient
+    // Conditional update via fortnox_synced_at = claimSentinel so we only
+    // overwrite our own claim. If something else cleared the claim while
+    // we were calling Fortnox (shouldn't happen, but defensive) we'd see 0
+    // rows updated and surface that as a reconcile-manually error.
+    const { data: persisted, error: updateError } = await adminClient
       .from("quotes")
       .update({
         fortnox_invoice_number: String(documentNumber),
         fortnox_synced_at: new Date().toISOString(),
       })
-      .eq("id", quoteId);
+      .eq("id", quoteId)
+      .eq("fortnox_synced_at", claimSentinel)
+      .select("id");
 
-    if (updateError) {
+    if (updateError || !persisted || persisted.length === 0) {
       // Invoice exists in Fortnox but we couldn't save the link locally.
-      // Surface a clear error so the user knows to reconcile manually
-      // before re-syncing — re-syncing would create a duplicate invoice.
+      // Don't roll back the claim — better to leave it set than risk a
+      // duplicate sync. The user is told to reconcile manually.
+      console.error(
+        `[${FUNCTION_NAME}] persist-failed quoteId=${quoteId} documentNumber=${documentNumber}`,
+        updateError,
+      );
       return jsonResponse(
         {
           error:
-            `Faktura skapad i Fortnox (#${documentNumber}) men Quotly kunde inte spara länken: ${updateError.message}`,
+            `Faktura skapad i Fortnox (#${documentNumber}) men Quotly kunde inte spara länken. Kontakta support.`,
           fortnox_invoice_number: String(documentNumber),
         },
         500,
@@ -296,7 +397,10 @@ serve(async (req: Request) => {
       200,
     );
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] error`, err);
-    return jsonResponse({ error: (err as Error).message }, 500);
+    console.error(`[${FUNCTION_NAME}] unhandled-error`, err);
+    return jsonResponse(
+      { error: "Något gick fel vid synk till Fortnox. Försök igen om en stund." },
+      500,
+    );
   }
 });

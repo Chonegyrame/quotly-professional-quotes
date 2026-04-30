@@ -33,18 +33,24 @@ function randomNonce(): string {
 }
 
 // Builds the URL Quotly redirects users to when they click "Anslut Fortnox".
-// Stores the state nonce + redirect_uri in sessionStorage so the callback
-// page can prove it originated this flow.
-export function buildFortnoxConnectUrl(): string {
+// Stores the state nonce + redirect_uri + user_id in sessionStorage so the
+// callback page can prove (a) it originated this flow and (b) the same
+// authenticated user who started the flow is the one finishing it. The
+// user-binding closes a CSRF login-fixation gap where another logged-in
+// user could complete a flow primed in a shared browser.
+export function buildFortnoxConnectUrl(userId: string): string {
   const clientId = import.meta.env.VITE_FORTNOX_CLIENT_ID as string | undefined;
   if (!clientId) {
     throw new Error('VITE_FORTNOX_CLIENT_ID saknas i miljön.');
+  }
+  if (!userId) {
+    throw new Error('Användar-id krävs för Fortnox-anslutning.');
   }
   const redirectUri = `${window.location.origin}/auth/fortnox/callback`;
   const state = randomNonce();
   sessionStorage.setItem(
     OAUTH_SESSION_KEY,
-    JSON.stringify({ state, redirect_uri: redirectUri }),
+    JSON.stringify({ state, redirect_uri: redirectUri, user_id: userId }),
   );
   const params = new URLSearchParams({
     client_id: clientId,
@@ -59,13 +65,21 @@ export function buildFortnoxConnectUrl(): string {
 }
 
 export function consumeFortnoxOAuthSession():
-  | { state: string; redirect_uri: string }
+  | { state: string; redirect_uri: string; user_id: string }
   | null {
   const raw = sessionStorage.getItem(OAUTH_SESSION_KEY);
   if (!raw) return null;
   sessionStorage.removeItem(OAUTH_SESSION_KEY);
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.state === 'string' &&
+      typeof parsed?.redirect_uri === 'string' &&
+      typeof parsed?.user_id === 'string'
+    ) {
+      return parsed;
+    }
+    return null;
   } catch {
     return null;
   }

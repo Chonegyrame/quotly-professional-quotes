@@ -75,8 +75,26 @@ serve(async (req: Request) => {
       );
     }
 
-    const tokens = await exchangeCodeForTokens(code, redirect_uri);
-    await upsertConnection(adminClient, membership.company_id, tokens);
+    let tokens;
+    try {
+      tokens = await exchangeCodeForTokens(code, redirect_uri);
+    } catch (err) {
+      console.error(`[${FUNCTION_NAME}] code-exchange-failed`, err);
+      return jsonResponse(
+        { error: "Fortnox kunde inte verifiera anslutningen. Försök igen." },
+        502,
+      );
+    }
+
+    try {
+      await upsertConnection(adminClient, membership.company_id, tokens);
+    } catch (err) {
+      console.error(`[${FUNCTION_NAME}] persist-failed`, err);
+      return jsonResponse(
+        { error: "Kunde inte spara Fortnox-anslutningen. Försök igen om en stund." },
+        500,
+      );
+    }
 
     return jsonResponse(
       {
@@ -86,7 +104,10 @@ serve(async (req: Request) => {
       200,
     );
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] error`, err);
-    return jsonResponse({ error: (err as Error).message }, 500);
+    console.error(`[${FUNCTION_NAME}] unhandled-error`, err);
+    return jsonResponse(
+      { error: "Något gick fel vid anslutning till Fortnox." },
+      500,
+    );
   }
 });

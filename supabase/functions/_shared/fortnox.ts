@@ -91,9 +91,19 @@ export async function refreshTokens(
 }
 
 // Get a usable access_token for the given company, refreshing first if the
-// stored one expires within the safety window (default 5 min). Persists
-// refreshed tokens back to fortnox_connections so concurrent callers don't
-// each trigger their own refresh.
+// stored one expires within the safety window (default 5 min). Concurrent
+// callers near token expiry are handled via optimistic concurrency:
+//
+//   1. Two callers (A and B) read the same row with refresh_token X.
+//   2. Both call Fortnox to refresh. Fortnox rotates X on first use, so
+//      whichever call arrives second is rejected by Fortnox.
+//   3. The losing call falls into the catch block and re-reads the row.
+//      If the DB row's refresh_token has been replaced (the winner already
+//      persisted), the loser uses the winner's fresh access_token instead
+//      of failing the request.
+//   4. The optimistic .eq("refresh_token", oldValue) on the persist also
+//      defends against a Fortnox grace window where both refresh calls
+//      succeed: only one persist wins; the other re-reads to converge.
 export async function getAccessToken(
   adminClient: SupabaseClient,
   companyId: string,
@@ -101,7 +111,7 @@ export async function getAccessToken(
 ): Promise<string> {
   const { data: conn, error } = await adminClient
     .from("fortnox_connections")
-    .select("*")
+    .select("access_token, refresh_token, expires_at")
     .eq("company_id", companyId)
     .single();
 
@@ -116,10 +126,29 @@ export async function getAccessToken(
     return conn.access_token as string;
   }
 
-  const fresh = await refreshTokens(conn.refresh_token as string);
+  let fresh;
+  try {
+    fresh = await refreshTokens(conn.refresh_token as string);
+  } catch (refreshErr) {
+    // Refresh might have failed because another caller already rotated the
+    // refresh_token. Re-read; if the row changed, use the winner's tokens.
+    const { data: maybeFresh } = await adminClient
+      .from("fortnox_connections")
+      .select("access_token, refresh_token, expires_at")
+      .eq("company_id", companyId)
+      .single();
+    if (maybeFresh && maybeFresh.refresh_token !== conn.refresh_token) {
+      const newExp = new Date(maybeFresh.expires_at).getTime();
+      if (newExp > refreshAt) {
+        return maybeFresh.access_token as string;
+      }
+    }
+    throw refreshErr;
+  }
+
   const newExpiresAt = new Date(Date.now() + fresh.expires_in * 1000).toISOString();
 
-  const { error: updateError } = await adminClient
+  const { data: updated, error: updateError } = await adminClient
     .from("fortnox_connections")
     .update({
       access_token: fresh.access_token,
@@ -129,10 +158,26 @@ export async function getAccessToken(
       scope: fresh.scope,
       updated_at: new Date().toISOString(),
     })
-    .eq("company_id", companyId);
+    .eq("company_id", companyId)
+    .eq("refresh_token", conn.refresh_token as string)
+    .select("access_token");
 
   if (updateError) {
     throw new Error(`Failed to persist refreshed tokens: ${updateError.message}`);
+  }
+
+  if (!updated || updated.length === 0) {
+    // Another caller persisted first. Re-read to use the canonical fresh
+    // tokens so the DB stays the single source of truth.
+    const { data: finalConn } = await adminClient
+      .from("fortnox_connections")
+      .select("access_token")
+      .eq("company_id", companyId)
+      .single();
+    if (!finalConn) {
+      throw new Error("Fortnox-anslutning försvann under refresh.");
+    }
+    return finalConn.access_token as string;
   }
 
   return fresh.access_token;

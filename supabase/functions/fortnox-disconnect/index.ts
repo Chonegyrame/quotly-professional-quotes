@@ -53,15 +53,19 @@ serve(async (req: Request) => {
       .eq("company_id", membership.company_id);
 
     if (deleteError) {
+      console.error(`[${FUNCTION_NAME}] delete-error`, deleteError);
       return jsonResponse(
-        { error: `Kunde inte koppla bort: ${deleteError.message}` },
+        { error: "Kunde inte koppla bort Fortnox just nu. Försök igen om en stund." },
         500,
       );
     }
 
     return jsonResponse({ disconnected: true }, 200);
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] error`, err);
-    return jsonResponse({ error: (err as Error).message }, 500);
+    console.error(`[${FUNCTION_NAME}] unhandled-error`, err);
+    return jsonResponse(
+      { error: "Något gick fel vid bortkoppling av Fortnox." },
+      500,
+    );
   }
 });

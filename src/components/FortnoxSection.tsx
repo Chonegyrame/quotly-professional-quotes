@@ -19,6 +19,7 @@ import {
   buildFortnoxConnectUrl,
   useFortnoxConnection,
 } from '@/hooks/useFortnoxConnection';
+import { useAuth } from '@/hooks/useAuth';
 
 // Surfaces Fortnox connection state in Settings. Two visual states:
 //   - Disconnected: explains the integration + "Anslut Fortnox" button.
@@ -26,12 +27,17 @@ import {
 // Connection details are fetched via the fortnox-status edge function (no
 // tokens hit the browser).
 export function FortnoxSection() {
+  const { user } = useAuth();
   const { status, isLoading, disconnect } = useFortnoxConnection();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   function handleConnect() {
+    if (!user?.id) {
+      toast.error('Du måste vara inloggad för att ansluta Fortnox.');
+      return;
+    }
     try {
-      const url = buildFortnoxConnectUrl();
+      const url = buildFortnoxConnectUrl(user.id);
       window.location.href = url;
     } catch (err) {
       toast.error((err as Error).message);

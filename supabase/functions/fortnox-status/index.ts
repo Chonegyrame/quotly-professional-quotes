@@ -54,7 +54,10 @@ serve(async (req: Request) => {
       200,
     );
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] error`, err);
-    return jsonResponse({ error: (err as Error).message }, 500);
+    console.error(`[${FUNCTION_NAME}] unhandled-error`, err);
+    return jsonResponse(
+      { error: "Kunde inte hämta Fortnox-status." },
+      500,
+    );
   }
 });

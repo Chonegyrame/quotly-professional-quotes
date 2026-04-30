@@ -7,6 +7,7 @@ import {
   consumeFortnoxOAuthSession,
   useFortnoxConnection,
 } from '@/hooks/useFortnoxConnection';
+import { useAuth } from '@/hooks/useAuth';
 
 // Landing page Fortnox redirects to after the user clicks "Tillåt".
 // Reads ?code= and ?state= from the URL, verifies state matches the nonce
@@ -16,6 +17,7 @@ import {
 export default function FortnoxCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { completeOAuth } = useFortnoxConnection();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -26,6 +28,8 @@ export default function FortnoxCallback() {
 
   useEffect(() => {
     if (ranRef.current) return;
+    // Wait for auth to hydrate; useAuth returns null on first paint.
+    if (!user?.id) return;
     ranRef.current = true;
 
     const code = params.get('code');
@@ -52,6 +56,16 @@ export default function FortnoxCallback() {
       setError('State-värdet matchar inte. Avbröt av säkerhetsskäl.');
       return;
     }
+    // Same user must finish the flow that started it. Closes a
+    // login-fixation path where attacker A primes session storage and a
+    // different victim B's authenticated session would otherwise complete
+    // the connection.
+    if (session.user_id !== user.id) {
+      setError(
+        'Inloggad användare matchar inte den som startade anslutningen. Avbröt av säkerhetsskäl.',
+      );
+      return;
+    }
 
     completeOAuth.mutate(
       { code, redirect_uri: session.redirect_uri },
@@ -64,7 +78,7 @@ export default function FortnoxCallback() {
         onError: (err) => setError((err as Error).message),
       },
     );
-  }, [params, completeOAuth, navigate]);
+  }, [params, completeOAuth, navigate, user?.id]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
