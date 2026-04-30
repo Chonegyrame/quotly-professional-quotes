@@ -149,6 +149,13 @@ export function useFortnoxConnection() {
   // Pushes an accepted quote to Fortnox as a draft invoice. Server-side
   // refuses if the quote isn't accepted, is already synced, or no
   // connection exists, so callers don't need to re-validate.
+  //
+  // supabase.functions.invoke wraps non-2xx as a generic
+  // "Edge Function returned a non-2xx status code" and stashes the
+  // actual Response on error.context. Read that response body here so
+  // the toast surfaces the friendly Swedish message the edge function
+  // returned (e.g. "Kunden saknar både e-post och telefon...") instead
+  // of the wrapper text.
   const sendInvoice = useMutation({
     mutationFn: async (quoteId: string): Promise<{ fortnox_invoice_number: string }> => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -162,7 +169,19 @@ export function useFortnoxConnection() {
             : undefined,
         },
       );
-      if (error) throw error;
+      if (error) {
+        let message = (error as Error).message;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const body = await ctx.json();
+            if (body?.error) message = body.error;
+          } catch {
+            // body wasn't JSON; fall back to wrapper message
+          }
+        }
+        throw new Error(message);
+      }
       return data as { fortnox_invoice_number: string };
     },
     onSuccess: () => {

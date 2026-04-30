@@ -57,6 +57,27 @@ function isLaborDescription(description: string | null | undefined): boolean {
   return !!description && description.toLowerCase().includes("arbet");
 }
 
+// Normalize Quotly's optional customer fields. Empty strings sneak through
+// in dev data ("" for phone/address) and Fortnox rejects them with 400 if
+// they're sent verbatim. Convert to undefined so JSON.stringify drops the
+// key entirely.
+function cleanField(v: string | null | undefined): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
+}
+
+// Email must look like an email before we forward it to Fortnox; otherwise
+// the firm's customer record gets created with "s" or whatever junk the
+// test data had, and Fortnox returns a validation error that surfaces as
+// our generic 502. Permissive regex on purpose — Fortnox does its own
+// strict validation; we just block the obviously-bad cases.
+function cleanEmail(v: string | null | undefined): string | undefined {
+  const t = cleanField(v);
+  if (!t) return undefined;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) ? t : undefined;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -100,13 +121,20 @@ serve(async (req: Request) => {
         fortnox_invoice_number, fortnox_synced_at,
         quote_items(
           id, description, quantity, unit_price, vat_rate, sort_order,
-          quote_item_materials(id, name, quantity, unit_price, unit, vat_rate)
+          quote_item_materials(id, name, quantity, unit_price, unit)
         )
       `)
       .eq("id", quoteId)
       .single();
 
     if (quoteError || !quote) {
+      // Surface the underlying PostgREST error to the function logs so
+      // problems like missing columns or RLS denials don't all collapse
+      // into a generic "not found" without trace.
+      console.error(
+        `[${FUNCTION_NAME}] quote-lookup-failed quoteId=${quoteId}`,
+        quoteError,
+      );
       return jsonResponse({ error: "Kunde inte hitta offerten." }, 404);
     }
 
@@ -205,11 +233,38 @@ serve(async (req: Request) => {
     let customerNumber: string | null = null;
     let customerWasCreated = false; // tracked for rollback on later failure
 
+    const cleanedEmail = cleanEmail(quote.customer_email);
+    const cleanedPhone = cleanField(quote.customer_phone);
+    const cleanedAddress = cleanField(quote.customer_address);
+    const cleanedName = cleanField(quote.customer_name);
+
+    if (!cleanedName) {
+      await rollbackClaim();
+      return jsonResponse(
+        { error: "Offerten saknar kundnamn." },
+        400,
+      );
+    }
+
+    // Require at least one contact channel so the firm can actually reach
+    // the customer about the invoice. Email gets digital sending via Fortnox;
+    // phone is enough for the firm to call and request a delivery address.
+    if (!cleanedEmail && !cleanedPhone) {
+      await rollbackClaim();
+      return jsonResponse(
+        {
+          error:
+            "Kunden saknar både e-post och telefon. Lägg till minst ett kontaktsätt på offerten innan du skickar till Fortnox.",
+        },
+        400,
+      );
+    }
+
     try {
-      if (quote.customer_email) {
+      if (cleanedEmail) {
         const lookupRes = await fortnoxFetch(
           accessToken,
-          `/customers?email=${encodeURIComponent(quote.customer_email)}`,
+          `/customers?email=${encodeURIComponent(cleanedEmail)}`,
         );
         const lookupJson = await lookupRes.json();
         const candidates = lookupJson?.Customers ?? [];
@@ -229,10 +284,10 @@ serve(async (req: Request) => {
           method: "POST",
           body: JSON.stringify({
             Customer: {
-              Name: quote.customer_name,
-              Email: quote.customer_email ?? undefined,
-              Phone1: quote.customer_phone ?? undefined,
-              Address1: quote.customer_address ?? undefined,
+              Name: cleanedName,
+              Email: cleanedEmail,
+              Phone1: cleanedPhone,
+              Address1: cleanedAddress,
               CountryCode: "SE",
               Type: "PRIVATE",
             },
@@ -249,7 +304,7 @@ serve(async (req: Request) => {
       console.error(`[${FUNCTION_NAME}] customer-step-failed`, err);
       await rollbackClaim();
       return jsonResponse(
-        { error: "Kunde inte synka kunden till Fortnox. Försök igen om en stund." },
+        { error: "Kunde inte synka kunden till Fortnox. Kontrollera att kunduppgifterna är korrekta." },
         502,
       );
     }
@@ -298,7 +353,9 @@ serve(async (req: Request) => {
           Description: mat.name ?? "Material",
           DeliveredQuantity: String(mat.quantity ?? 1),
           Price: Number(mat.unit_price ?? 0),
-          VAT: Number(mat.vat_rate ?? item.vat_rate ?? 25),
+          // Materials inherit VAT from their parent quote_item — no
+          // standalone vat_rate column on quote_item_materials.
+          VAT: Number(item.vat_rate ?? 25),
           Unit: mat.unit ?? undefined,
           HouseWork: false,
         });
