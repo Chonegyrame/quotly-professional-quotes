@@ -19,7 +19,7 @@ export function Navbar() {
 
   return (
     <>
-      <header className="hidden md:flex items-center justify-between border-b bg-card px-6 py-3">
+      <header className="sticky top-0 z-40 hidden md:flex items-center justify-between border-b bg-card px-6 py-3">
         <Link to="/" className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <FileText className="h-5 w-5 text-primary-foreground" />
