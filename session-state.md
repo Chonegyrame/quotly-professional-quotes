@@ -51,9 +51,52 @@ The Fortnox scaffold (`feat(fortnox): scaffold OAuth + invoice push backend` `c7
 
 Then the live-test fix-up commits (will be a single commit on next push since they came after the deploy verification): `vat_rate` column removal + console.error on quote-lookup-failure, `cleanField` / `cleanEmail` helpers, Option B contact requirement (name + at least one of email/phone), `_detail` debug field added then removed once Fortnox spike was complete, error-body parsing in `useFortnoxConnection.sendInvoice` so toasts surface real Swedish messages instead of generic "non-2xx" wrapper.
 
+## Security review (post-session, 2 senior reviewers run in parallel)
+
+Both reviewers verified the previous critical + 5 HIGH + 3 MED fixes and looked for new issues. Status of previous fixes:
+
+| Previous finding | Status |
+|---|---|
+| 🔴 CRITICAL — cross-tenant via membership ambiguity | ✅ Closed (UNIQUE constraint + defensive eq) |
+| HIGH #1 — defensive company_id check | ✅ Closed *on `create-fortnox-invoice` only* — see new MED #5 below |
+| HIGH #2 — idempotency race / atomic claim | ⚠️ Closed for happy path; **two new edge cases** found (HIGH #1, #2 below) |
+| HIGH #3 — OAuth state user-binding | ✅ Closed |
+| HIGH #4 — token refresh race | ⚠️ Partially closed — Fortnox grace-window edge case still theoretical (MED #6) |
+| HIGH #5 — raw error bubbling | ✅ Closed |
+| MED #6 — IP rate limits | ✅ Closed (TOCTOU caveat — MED #10) |
+| MED #7 — redirect_uri allowlist | ✅ Closed but operationally fragile + fails open if env empty (MED #9) |
+| MED #8 — basicAuthHeader Buffer fallback | ✅ Closed |
+| Double-click ref guards on 5 mutation handlers | ⚠️ Closed at UI layer only; server-side idempotency only exists on `create-fortnox-invoice` (MED #7) |
+
+### New findings (uncommitted — to fix in next session)
+
+**🟠 HIGH (3 — fix early next session)**
+1. **Claim leak when `rows.length === 0`** — `create-fortnox-invoice/index.ts:365-370`. Returns 400 without `await rollbackClaim()`. Quote permanently locked at 409. Fix: rollback before the 400 return, or move row-build above the claim.
+2. **State-machine TOCTOU between read and atomic claim** — same file, lines 158-189. Status can flip to archived/completed/revised between read and claim; invoice still gets pushed. Fix: add `.eq("status", "accepted")` to the claim's WHERE.
+3. **`cleanField` allows control chars / bidi / homographs** — same file, lines 64-68. Public intake form can pollute firm's Fortnox catalog with deceptive `customer_name` values (U+202E etc.). Fix: strip `\p{C}` + `\p{Cf}`, cap fields to ~200 chars, cap email to 254.
+
+**🟡 MEDIUM**
+4. **`accept-team-invite` mishandles pre-existing duplicate memberships** — only triggers if `UNIQUE (user_id)` is ever bypassed; defensive 409 needed.
+5. **Defensive `company_id` check missing on disconnect/status/oauth-callback** — only `create-fortnox-invoice` got the defense-in-depth filter. Pattern needs to be applied to the other three.
+6. **Token refresh: Fortnox grace-window double-issue** — theoretical persistent-lockout if Fortnox accepts the same refresh_token from two callers in its grace window. Fix is a per-company Postgres advisory lock instead of optimistic concurrency.
+7. **No server-side idempotency for createQuote / duplicateQuote / generate-quote / declineRequest** — `useRef` guards are UI-only. Strict-Mode remount or scripted bypass re-opens the double-fire window. Real fix: client-minted idempotency token + unique constraint on rows.
+8. **Customer-rollback abuse vector** — malicious member can churn ~60 PRIVATE customer DELETEs/hour in firm's Fortnox by submitting failing invoices. Fix: validate invoice payload before customer-create, or move customer-create after invoice POST.
+9. **`redirect_uri` allowlist fragility** — strict `Array.includes` (no normalization for trailing slash / case); silently fails open if `FORTNOX_REDIRECT_URIS` env unset. Fix: hard-fail in prod when empty + normalize comparison.
+10. **`checkIpRateLimit` TOCTOU** — read-then-insert; effective limit doubles under concurrency. Fix: atomic counter row.
+
+**🟢 LOW (deferred)**
+- 403/404 oracle on quote ownership (currently unreachable due to RLS; future risk if RLS relaxes)
+- `sendInvoice` toast doesn't cap error-body size
+- `fortnoxFetch` raw bodies into logs (potential token leak if logs ever ship to less-trusted aggregator)
+- `getAccessToken` doesn't guard for missing `FORTNOX_CLIENT_SECRET`
+- `accept-team-invite` no IP rate limit
+- `ranRef` set before validations in `FortnoxCallback` (cosmetic)
+- `fortnox-status` exposes `expires_at` + `scope` (timing metadata, acceptable)
+
 ## What comes next
 
-1. **Toast positioning** — user requested error toasts render center-aligned (modal-style) instead of corner. Cosmetic, low priority.
+1. **Security fixes from review** — at minimum HIGH #1, #2, #4 (claim leak, status TOCTOU, cleanField hardening) before any production traffic. MEDIUMs #5, #7 in the next session pass; rest can be batched later.
+2. **Toast positioning** — user requested error toasts render center-aligned (modal-style) instead of corner. Cosmetic, low priority.
 2. **Fortnox cosmetic + accounting polish (deferred from live verification):**
    - Labor rows post with no `Unit` field → blank in Fortnox UI. Default to `Unit: "st"` or `"tim"`.
    - All rows book to default Konto 3001 (försäljning, varor 25%). Real firms would prefer labor on a service account (3041). We don't currently send `Konto` per row. Either map Quotly trade → konto, or leave for the firm's bookkeeper.
