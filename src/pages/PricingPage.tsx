@@ -107,7 +107,13 @@ const faqs = [
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white text-foreground">
+    <div
+      className="min-h-screen text-stone-100"
+      style={{
+        background:
+          'linear-gradient(to bottom, #1c1917 0%, #1c1917 15%, #57534e 50%, #1c1917 85%, #1c1917 100%)',
+      }}
+    >
       <MarketingHeader />
 
       {/* Hero */}
@@ -117,13 +123,13 @@ export default function PricingPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.25, 0.4, 0, 1] }}
         >
-          <span className="inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent mb-4">
+          <span className="inline-block rounded-full bg-accent/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent mb-4">
             Pris
           </span>
-          <h1 className="font-heading text-3xl font-bold text-foreground sm:text-4xl lg:text-5xl mb-5">
+          <h1 className="font-heading text-3xl font-bold text-stone-50 sm:text-4xl lg:text-5xl mb-5">
             Enkel prissättning. Ingen bindning.
           </h1>
-          <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
+          <p className="mx-auto max-w-2xl text-lg text-stone-300">
             Välj planen som passar din firma. Inga per-användare-avgifter på Pro, ingen
             12-månadsbindning, och full flexibilitet att uppgradera eller avsluta när du vill.
           </p>
@@ -217,7 +223,7 @@ export default function PricingPage() {
         </div>
 
         {/* Reassurance row */}
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-stone-300">
           <span className="inline-flex items-center gap-1.5">
             <Check className="h-4 w-4 text-accent" />
             Ingen bindningstid
@@ -234,13 +240,13 @@ export default function PricingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-stone-50/70 py-16 sm:py-20">
+      <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <div className="mb-10 text-center">
-            <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">
+            <h2 className="font-heading text-2xl font-bold text-stone-50 sm:text-3xl">
               Vanliga frågor
             </h2>
-            <p className="mt-3 text-base text-muted-foreground">
+            <p className="mt-3 text-base text-stone-300">
               Det vi får mest frågor om innan företag väljer plan.
             </p>
           </div>
@@ -262,10 +268,10 @@ export default function PricingPage() {
       {/* Final CTA */}
       <section className="py-20 sm:py-24">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-          <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl mb-4">
+          <h2 className="font-heading text-2xl font-bold text-stone-50 sm:text-3xl mb-4">
             Redo att testa?
           </h2>
-          <p className="mb-8 text-lg text-muted-foreground">
+          <p className="mb-8 text-lg text-stone-300">
             14 dagar gratis. Inget kort, ingen bindning.
           </p>
           <Link to="/auth?signup=true">

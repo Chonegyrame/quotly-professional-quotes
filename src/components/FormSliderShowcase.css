@@ -47,7 +47,7 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 64px 32px 96px;
-  background: var(--bg);
+  background: transparent;
   color: var(--fg-1);
   font-family: var(--font-body);
 }
@@ -152,6 +152,29 @@
   filter: blur(6px);
   z-index: 0;
   pointer-events: none;
+}
+
+/* Invisible click-capture overlays for non-active visible slots. They sit
+   outside .slider-stage-3d so hit-testing happens in plain 2D space, and
+   their inline `left` puts them at each side card's visible position. */
+.slider-page .slider-hit {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  transition:
+    left 520ms cubic-bezier(0.22, 0.7, 0.18, 1),
+    width 520ms cubic-bezier(0.22, 0.7, 0.18, 1),
+    height 520ms cubic-bezier(0.22, 0.7, 0.18, 1);
+}
+.slider-page .slider-hit:focus-visible {
+  outline: 2px solid var(--orange-500);
+  outline-offset: 4px;
 }
 
 /* ─────────── Cards ─────────── */
@@ -292,11 +315,11 @@
 /* Active card — stamped, brand-led */
 .slider-page .slider-card.is-active .slider-card-inner {
   background: var(--white);
-  border-color: var(--orange-500);
+  border-color: var(--slider-accent, var(--orange-500));
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.8) inset,
-    6px 6px 0 var(--orange-500),
-    8px 8px 24px -4px rgba(200, 90, 31, 0.45);
+    6px 6px 0 var(--slider-accent, var(--orange-500)),
+    8px 8px 24px -4px color-mix(in srgb, var(--slider-accent, var(--orange-500)) 45%, transparent);
 }
 .slider-page .slider-card.is-active .slider-card-stamp {
   color: var(--white-warm);
@@ -310,7 +333,7 @@
   color: var(--orange-600);
 }
 .slider-page .slider-card.is-active .slider-card-corner {
-  border-color: var(--orange-500);
+  border-color: var(--slider-accent, var(--orange-500));
   opacity: 1;
 }
 
@@ -404,11 +427,7 @@
   border-radius: 10px;
   padding: 36px 40px 32px;
   box-shadow: var(--shadow-sm);
-  animation: sliderDetailsIn 380ms cubic-bezier(0.22, 0.7, 0.18, 1) both;
-}
-@keyframes sliderDetailsIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  /* Slide-in motion is owned by framer-motion in FormSliderShowcase.tsx. */
 }
 .slider-page .form-details-head {
   border-bottom: 1px solid var(--border-hair);

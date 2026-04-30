@@ -40,7 +40,7 @@ export function FrontPanel({ idx, stamp, title, body, preview, reverse = false }
   );
 
   const previewBlock = (
-    <div className="w-[440px] flex-shrink-0">{preview}</div>
+    <div className="w-[440px] flex-shrink-0 self-center">{preview}</div>
   );
 
   return (

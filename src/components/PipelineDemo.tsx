@@ -418,7 +418,14 @@ export function PipelineDemo({
   if (!active) return null;
 
   return (
-    <section className="bg-stone-50/60 py-16 sm:py-24">
+    <section
+      className="bg-stone-50/60 py-16 sm:py-24"
+      style={{
+        backgroundImage:
+          'radial-gradient(circle, rgba(100,116,139,0.18) 1px, transparent 1px)',
+        backgroundSize: '16px 16px',
+      }}
+    >
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="text-center mb-10">
           <h2 className="font-heading text-3xl font-bold sm:text-4xl mb-4">{heading}</h2>

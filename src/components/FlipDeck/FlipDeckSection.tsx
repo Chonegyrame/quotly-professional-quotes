@@ -39,9 +39,9 @@ const CARDS: FlipCardData[] = [
   {
     idx: '02',
     stamp: 'Materialbank · Påslag',
-    title: 'Inköpspris in. Utpris ut. Påslag automatiskt.',
+    title: 'Inköpspris in. Kundpris ut. Påslag automatiskt.',
     body: 'Sätt ett globalt påslag (eller per artikel), så räknar Quotly resten. Snart även live-priser från Ahlsell, Onninen och Dahl, så listan alltid är uppdaterad.',
-    teaser: 'gipsskiva 112 kr  →  +20% globalt  →  134 kr utpris',
+    teaser: 'gipsskiva 112 kr  →  +20% globalt  →  134 kr kundpris',
     preview: <MaterialFlowPreview />,
   },
   {
@@ -85,7 +85,7 @@ export function FlipDeckSection() {
             key={c.idx}
             axis="x"
             duration={820}
-            height={425}
+            height={360}
             triggerAt={0.4}
             className="mb-6"
             back={

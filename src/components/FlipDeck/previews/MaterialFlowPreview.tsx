@@ -26,7 +26,7 @@ export function MaterialFlowPreview() {
       </div>
 
       <div className="grid grid-cols-[1fr_56px_64px_56px] gap-1 border-b border-stone-200 px-3 py-1.5">
-        {['Artikel', 'Inköp', 'Påslag', 'Utpris'].map((label, i) => (
+        {['Artikel', 'Inköp', 'Påslag', 'Kundpris'].map((label, i) => (
           <span
             key={label}
             className={`font-display text-[9px] font-semibold uppercase tracking-[0.1em] text-stone-500 ${i > 0 ? 'text-right' : ''}`}

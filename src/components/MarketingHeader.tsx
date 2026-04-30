@@ -20,7 +20,7 @@ export function MarketingHeader() {
       transition={{ duration: 0.6, ease: [0.25, 0.4, 0, 1] }}
       className="sticky top-0 z-50 border-b border-stone-100 bg-white/80 backdrop-blur-md"
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:pl-32 lg:pr-32">
         <Link to="/" className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
             <FileText className="h-5 w-5 text-white" />

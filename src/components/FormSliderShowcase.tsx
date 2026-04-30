@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import './FormSliderShowcase.css';
+
+// Slide-in/out variants matched to the carousel's rotation direction.
+// dir > 0 = "next" (carousel rotated leftward) → new form enters from right, old exits left.
+// dir < 0 = "prev" (carousel rotated rightward) → new form enters from left, old exits right.
+const detailsVariants = {
+  enter: (dir: number) => ({ x: dir > 0 ? 80 : -80, opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (dir: number) => ({ x: dir > 0 ? -80 : 80, opacity: 0 }),
+};
 
 export type SliderTemplate = {
   id: string;
@@ -94,15 +104,9 @@ function TemplateCard({
   );
 }
 
-function FormDetails({
-  template,
-  transitionKey,
-}: {
-  template: SliderTemplate;
-  transitionKey: string;
-}) {
+function FormDetailsContent({ template }: { template: SliderTemplate }) {
   return (
-    <div className="form-details" key={transitionKey}>
+    <>
       <div className="form-details-head">
         <div className="q-stamp">FORMULÄR</div>
         <div className="form-details-title">{template.label}</div>
@@ -121,7 +125,7 @@ function FormDetails({
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -130,16 +134,22 @@ export function FormSliderShowcase({
   eyebrow = 'FORMULÄRBIBLIOTEK',
   headline = 'Ett formulär per jobbtyp.',
   intro = 'Quotly har formulär per jobbtyp så förfrågan samlar in exakt det som behövs. Klicka för att se vad varje formulär frågar.',
+  accentColor,
 }: {
   templates: SliderTemplate[];
   eyebrow?: string;
   headline?: string;
   intro?: string;
+  accentColor?: string;
 }) {
   const [active, setActive] = useState(0);
+  // Sign of the most recent rotation: +1 for "next", -1 for "prev". Drives the
+  // form-details slide direction so it tracks the carousel's rotation feel.
+  const [direction, setDirection] = useState(1);
   const n = templates.length;
 
   const rotateBy = (delta: number) => {
+    if (delta !== 0) setDirection(delta > 0 ? 1 : -1);
     setActive((prev) => modIndex(prev + delta, n));
   };
 
@@ -163,7 +173,10 @@ export function FormSliderShowcase({
   const activeTemplate = templates[active];
 
   return (
-    <section className="slider-page">
+    <section
+      className="slider-page"
+      style={accentColor ? ({ '--slider-accent': accentColor } as CSSProperties) : undefined}
+    >
       <div className="slider-header">
         <div className="q-stamp">{eyebrow}</div>
         <h2 className="slider-headline">{headline}</h2>
@@ -205,6 +218,32 @@ export function FormSliderShowcase({
             ))}
           </div>
           <div className="slider-floor"></div>
+
+          {/* Click-capture overlays for side slots. The cards inside .slider-stage-3d
+              all share the same DOM position (top: 50%; left: 50%) and hit-testing
+              under preserve-3d picks the topmost untransformed box (the active card)
+              for every click. These transparent buttons sit outside that 3D context,
+              positioned via `left` to match each side card's visible location, and
+              forward the click to rotateBy. */}
+          {cards.map(({ template, slot }) => {
+            if (slot === 0 || Math.abs(slot) > 2) return null;
+            const ss = SLOT_STYLES[String(slot)];
+            return (
+              <button
+                key={`hit-${template.id}`}
+                type="button"
+                className="slider-hit"
+                onClick={() => rotateBy(slot)}
+                aria-label={`Visa ${template.label}`}
+                style={{
+                  left: `calc(50% + ${ss.x}px)`,
+                  width: 360 * ss.scale,
+                  height: 240 * ss.scale,
+                  zIndex: ss.zIndex + 10,
+                }}
+              />
+            );
+          })}
         </div>
 
         <button
@@ -227,7 +266,20 @@ export function FormSliderShowcase({
         </button>
       </div>
 
-      <FormDetails template={activeTemplate} transitionKey={activeTemplate.id} />
+      <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+        <motion.div
+          key={activeTemplate.id}
+          className="form-details"
+          custom={direction}
+          variants={detailsVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.3, ease: [0.22, 0.7, 0.18, 1] }}
+        >
+          <FormDetailsContent template={activeTemplate} />
+        </motion.div>
+      </AnimatePresence>
     </section>
   );
 }
